@@ -49,6 +49,9 @@ ul{list-style:none}
 .menu-item .lock{margin-left:auto;font-size:11px;opacity:.6;width:auto}
 .sidebar-bottom{margin-top:20px;padding-top:16px;border-top:1px solid var(--border-color);display:flex;flex-direction:column;gap:2px}
 .admin-pill{font-size:12px;color:var(--success);background:rgba(46,213,115,.1);border-radius:6px;padding:8px 12px;margin-bottom:6px;display:flex;gap:8px;align-items:center;word-break:break-all}
+.sync-status{font-size:12px;color:var(--text-muted);padding:4px 12px 8px;display:flex;gap:6px;align-items:center}
+.sync-status.saved i{color:var(--success)}
+.sync-status.error,.sync-status.offline{color:var(--danger)}
 .sidebar-footer{text-align:center;font-size:12px;color:var(--text-muted);margin-top:16px}
 .content{flex:1;padding:36px 40px 60px;min-width:0}
 
@@ -275,19 +278,17 @@ tr.cp-reached td{background:rgba(255,71,87,.08)}
 <script>
 'use strict';
 /* =====================================================================
-   [설정] 계정 (로그인은 이메일이 아니라 "아이디"로 합니다)
-   - MASTER_ID: 마스터 계정 아이디. 마스터는 하나뿐이며 삭제할 수 없습니다.
-   - *_SHA256: 기본 비밀번호의 해시값. 비밀번호 원문은 파일에 넣지 않고
-     "아이디(소문자)|비밀번호"를 SHA-256으로 변환한 값만 넣습니다.
-       마스터 MASTER  기본 비밀번호: abcd1234!@
-       일반   PIE     기본 비밀번호: test1234!@  (필요 없으면 TEST_MEMBER: null)
-     로그인한 뒤 꼭 비밀번호를 바꾸세요.
+   [설정] Supabase 연결
+   - 데이터와 계정은 모두 Supabase(온라인 데이터베이스)에 저장됩니다.
+   - SUPABASE_KEY 는 "공개용(publishable) 키"라서 사이트에 넣어도 됩니다.
+     실제 보호는 서버의 보안 규칙(RLS)과 권한 검사 함수가 합니다.
+   - 계정·비밀번호는 서버에만 있습니다 (사이트 파일에는 없음).
    ===================================================================== */
 const CONFIG = {
   SITE_NAME: '이터리',
-  MASTER_ID: 'MASTER',
-  MASTER_DEFAULT_PASSWORD_SHA256: '478fd8538616f6ba3307858a6dd298c23c48d0f666953c5314699503e489a5bd',
-  TEST_MEMBER: { id:'PIE', hash:'a413f83198aa49f922274cbce8d2a68a2d3bc1eda27b3da144a8a4ea73331626' },
+  SUPABASE_URL: 'https://kwiuoxvdzmhyrxtwlned.supabase.co',
+  SUPABASE_KEY: 'sb_publishable_58kSGjnLsEuwvzDaokNQ8g_GIZBRPsj',
+  POLL_MS: 8000,   // 다른 사람이 바꾼 내용을 확인하는 주기 (8초)
 };
 
 /* ---------- 티어 정의 (이름, 코스트, 색) ---------- */
@@ -306,37 +307,35 @@ const costOf    = p => (tierInfo(p.tier)?.cost ?? 0);
 const tierIndex = k => { const i = TIERS.findIndex(t => t.k === k); return i < 0 ? 99 : i; };
 
 /* =====================================================================
-   데이터 저장소 (브라우저 localStorage)
-   db.players : 선수 목록
-   db.records : 우승 기록(대회 결과, 1~8등)
-   db.draft   : 드래프트 설정
-   db.score   : 진행 중인 경기 점수판
+   데이터 (Supabase의 app_state 표 한 줄에 통째로 저장)
+   db.players : 선수 목록      db.records : 우승 기록(1~8등)
+   db.draft   : 드래프트 설정  db.score   : 진행 중인 경기 점수판
+   선수 사진은 용량이 커서 photos 표에 따로 저장합니다.
    ===================================================================== */
-const DB_KEY = 'irido_db_v1';
 function defaultDB(){
   return { players:[], records:[], draft:{ teamCount:8 },
            score:{ teams:[], rounds:3, scores:{}, cpOn:false, cpTarget:50, startedAt:null } };
 }
-function normalizeDB(d){
+// photoSink 를 주면 예전 데이터에 들어 있던 사진(p.image)을 꺼내 담습니다.
+function normalizeDB(d, photoSink){
   const base = defaultDB();
   const out = { ...base, ...d, draft:{...base.draft, ...(d.draft||{})}, score:{...base.score, ...(d.score||{})} };
+  out.players = Array.isArray(out.players) ? out.players : [];
+  out.records = Array.isArray(out.records) ? out.records : [];
+  delete out.photos;
   out.players.forEach(p => {
     if(p.tier && !TIERS.some(t => t.k === p.tier)) p.tier = OLD_TIER_MAP[p.tier] || null;
+    if('image' in p){
+      if(photoSink && typeof p.image === 'string' && p.image.startsWith('data:image/')) photoSink[p.id] = p.image;
+      delete p.image;
+    }
   });
   return out;
 }
-function loadDB(){
-  try{
-    const raw = localStorage.getItem(DB_KEY);
-    return raw ? normalizeDB(JSON.parse(raw)) : defaultDB();
-  }catch(e){ console.warn(e); return defaultDB(); }
-}
-let db = loadDB();
-function save(){
-  try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
-  catch(e){ toast('저장 실패: 브라우저 저장 공간을 확인하세요', 'error'); }
-}
-try{ localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch{}   // 티어 변환 결과를 바로 저장
+let db = defaultDB();
+let photos = {};            // { 선수id: 사진 data URL }
+let stateVersion = -1;      // 서버 데이터 버전 (동시에 고치는 것을 막는 데 사용)
+let booted = false;
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 
 /* ---------- 유틸 함수 ---------- */
@@ -357,77 +356,118 @@ const byTierName = (a,b) => tierIndex(a.tier) - tierIndex(b.tier) || a.name.loca
 const findPlayer = id => db.players.find(p => p.id === id);
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
 
-/* ---------- SHA-256 (비밀번호 비교용, 외부 라이브러리 없이 동작) ---------- */
-const sha256 = (() => {
-  const primes = []; for(let n=2; primes.length<64; n++){ let ok=true; for(let d=2; d*d<=n; d++) if(n%d===0){ok=false;break;} if(ok) primes.push(n); }
-  const frac = x => ((x - Math.floor(x)) * 2**32) >>> 0;
-  const K = primes.map(p => frac(Math.cbrt(p)));
-  const H0 = primes.slice(0,8).map(p => frac(Math.sqrt(p)));
-  const ror = (x,n) => (x>>>n) | (x<<(32-n));
-  return str => {
-    const bytes = new TextEncoder().encode(str), l = bytes.length;
-    const buf = new Uint8Array(((l + 9 + 63) >> 6) << 6); buf.set(bytes); buf[l] = 0x80;
-    const dv = new DataView(buf.buffer), bits = l * 8;
-    dv.setUint32(buf.length-4, bits >>> 0); dv.setUint32(buf.length-8, Math.floor(bits / 2**32));
-    const H = H0.slice(), W = new Uint32Array(64);
-    for(let i=0; i<buf.length; i+=64){
-      for(let t=0;t<16;t++) W[t] = dv.getUint32(i+t*4);
-      for(let t=16;t<64;t++){
-        const s0 = ror(W[t-15],7)^ror(W[t-15],18)^(W[t-15]>>>3);
-        const s1 = ror(W[t-2],17)^ror(W[t-2],19)^(W[t-2]>>>10);
-        W[t] = (W[t-16]+s0+W[t-7]+s1) >>> 0;
-      }
-      let [a,b,c,d,e,f,g,h] = H;
-      for(let t=0;t<64;t++){
-        const t1 = (h + (ror(e,6)^ror(e,11)^ror(e,25)) + ((e&f)^(~e&g)) + K[t] + W[t]) >>> 0;
-        const t2 = ((ror(a,2)^ror(a,13)^ror(a,22)) + ((a&b)^(a&c)^(b&c))) >>> 0;
-        h=g; g=f; f=e; e=(d+t1)>>>0; d=c; c=b; b=a; a=(t1+t2)>>>0;
-      }
-      [a,b,c,d,e,f,g,h].forEach((v,k) => H[k] = (H[k]+v) >>> 0);
-    }
-    return H.map(x => x.toString(16).padStart(8,'0')).join('');
-  };
-})();
+/* =====================================================================
+   서버(Supabase) 통신
+   - 읽기: REST로 표를 바로 읽음 (누구나 가능)
+   - 쓰기: 서버 함수(RPC)만 호출 가능. 함수 안에서 로그인·권한을 검사합니다.
+   ===================================================================== */
+const API = {
+  async req(path, opts = {}){
+    const r = await fetch(CONFIG.SUPABASE_URL + path, { ...opts,
+      headers:{ apikey:CONFIG.SUPABASE_KEY, 'Content-Type':'application/json', ...(opts.headers || {}) } });
+    const text = await r.text();
+    let body = null; try{ body = text ? JSON.parse(text) : null; }catch{ body = text; }
+    if(!r.ok){ const code = (body && body.message) || ('HTTP_' + r.status); const e = new Error(code); e.code = code; throw e; }
+    return body;
+  },
+  rpc(fn, args){ return this.req('/rest/v1/rpc/' + fn, { method:'POST', body:JSON.stringify(args) }); },
+  get(table, query){ return this.req(`/rest/v1/${table}?${query}`); },
+};
+const ERR_MSG = {
+  INVALID_LOGIN:'아이디 또는 비밀번호가 올바르지 않습니다', AUTH_REQUIRED:'로그인이 만료되었습니다. 다시 로그인하세요',
+  FORBIDDEN:'이 계정에는 권한이 없습니다', WRONG_PASSWORD:'현재 비밀번호가 올바르지 않습니다',
+  BAD_LOGIN_ID:'아이디는 영문·숫자·_ 2~20자여야 합니다', LOGIN_TAKEN:'이미 사용 중인 아이디입니다',
+  SHORT_PASSWORD:'비밀번호는 8자 이상이어야 합니다', NO_LINKED_PLAYER:'이 계정에 연결된 멤버가 없습니다',
+  PLAYER_TAKEN:'그 멤버는 이미 다른 계정에 연결되어 있습니다', BAD_IMAGE:'사진 형식이 올바르지 않습니다',
+  BAD_ROLE:'권한 값이 올바르지 않습니다', NOT_FOUND:'계정을 찾을 수 없습니다',
+};
+const errText = e => ERR_MSG[e.code] || (/fetch/i.test(e.message) ? '서버에 연결할 수 없습니다' : '오류: ' + e.message);
+function handleErr(e){
+  if(e.code === 'AUTH_REQUIRED'){ setSession(null); route(); }
+  toast(errText(e), 'error');
+}
+
+/* ---------- 동기화 상태 표시 ---------- */
+let syncState = 'loading';
+const SYNC_LABEL = { loading:['fa-spinner fa-spin','불러오는 중'], saved:['fa-circle-check','실시간 연결됨'],
+  saving:['fa-arrows-rotate fa-spin','저장 중...'], error:['fa-triangle-exclamation','저장 실패'], offline:['fa-plug-circle-xmark','서버 연결 끊김'] };
+function setSync(s){
+  syncState = s;
+  const el = $('#syncStatus'); if(!el) return;
+  const [ic, label] = SYNC_LABEL[s];
+  el.className = 'sync-status ' + s; el.innerHTML = `<i class="fa-solid ${ic}"></i> ${label}`;
+}
+
+/* ---------- 데이터 읽기 / 저장 ---------- */
+async function loadState(){
+  const rows = await API.get('app_state', 'select=data,version&id=eq.1');
+  db = normalizeDB(rows[0].data || {}); stateVersion = rows[0].version;
+}
+async function loadPhotos(){
+  const rows = await API.get('photos', 'select=player_id,data');
+  photos = Object.fromEntries(rows.map(r => [r.player_id, r.data]));
+}
+// 관리자가 바꾼 내용을 서버에 저장 (연달아 바꾸면 0.35초 모아서 한 번에)
+let saveTimer = null, saving = false, dirty = false;
+function save(){
+  if(!isAdmin()) return;
+  dirty = true; setSync('saving');
+  clearTimeout(saveTimer); saveTimer = setTimeout(flushSave, 350);
+}
+async function flushSave(){
+  if(saving){ saveTimer = setTimeout(flushSave, 300); return; }
+  if(!dirty) return;
+  saving = true; dirty = false;
+  try{
+    stateVersion = await API.rpc('save_state', { p_token:session.token, p_data:db, p_version:stateVersion });
+    setSync(dirty ? 'saving' : 'saved');
+  }catch(e){
+    dirty = false; setSync('error');
+    if(e.code === 'VERSION_CONFLICT') toast('다른 관리자가 먼저 수정해서 최신 내용으로 다시 불러왔습니다. 방금 바꾼 내용을 다시 확인해 주세요', 'error');
+    else handleErr(e);
+    try{ await refreshState(true); setSync('saved'); }catch{}
+  }finally{ saving = false; }
+}
+async function savePhoto(pid, data){
+  await API.rpc('save_photo', { p_token:session.token, p_player_id:pid, p_data:data || null });
+  if(data) photos[pid] = data; else delete photos[pid];
+}
+// 다른 사람이 바꾼 내용 반영 (입력 중이면 입력이 끝난 뒤에)
+let pendingRemote = false;
+const typingInPage = () => { const a = document.activeElement; return !!(a && $('#page').contains(a) && /INPUT|SELECT|TEXTAREA/.test(a.tagName)); };
+async function refreshState(force){
+  await Promise.all([loadState(), loadPhotos()]);
+  if(!force && typingInPage()){ pendingRemote = true; return; }
+  pendingRemote = false; renderSidebar(); rerender();
+}
+async function pollState(){
+  if(!booted || saving || dirty || document.hidden) return;
+  try{
+    const rows = await API.get('app_state', 'select=version&id=eq.1');
+    if(rows[0].version !== stateVersion) await refreshState(false);
+    if(syncState !== 'saving') setSync('saved');
+  }catch{ setSync('offline'); }
+}
+setInterval(pollState, CONFIG.POLL_MS);
+window.addEventListener('focus', pollState);
+document.addEventListener('focusout', () => setTimeout(() => {
+  if(pendingRemote && !typingInPage()){ pendingRemote = false; renderSidebar(); rerender(); }
+}, 80));
 
 /* =====================================================================
-   계정 (브라우저 localStorage의 iteri_accounts_v3 에 저장)
-   { id, hash, role, playerId, createdAt }
-   - id:       로그인 아이디 (영문·숫자·_ 2~20자, 대소문자 구분 없이 비교)
-   - hash:     sha256("아이디(소문자)|비밀번호")
-   - role:     'master' | 'admin' | 'member'
-   - playerId: 일반 계정과 연결된 선수(멤버). 일반 계정은 이 선수의 출퇴근만 바꿀 수 있습니다.
+   로그인 상태 (서버가 준 토큰을 이 브라우저에 보관, 30일 유지)
+   account: { id, login_id, role, player_id }
    ===================================================================== */
-const ACC_KEY = 'iteri_accounts_v3';
-const SESSION_KEY = 'iteri_session';
+const SESSION_KEY = 'iteri_session_v2';
 const ID_RULE = /^[A-Za-z0-9_]{2,20}$/;
-const hashPw = (id, pw) => sha256(norm(id) + '|' + pw);
-function loadAccounts(){
-  const raw = localStorage.getItem(ACC_KEY);
-  let list = [];
-  try{ list = JSON.parse(raw) || []; }catch{ list = []; }
-  if(!Array.isArray(list)) list = [];
-  list = list.filter(a => a && typeof a.id === 'string' && typeof a.hash === 'string');
-  list.forEach(a => { if(!['master','admin','member'].includes(a.role)) a.role = 'member'; });
-  // 마스터는 정확히 1명만
-  const masters = list.filter(a => a.role === 'master');
-  masters.slice(1).forEach(a => a.role = 'admin');
-  if(!masters.length){
-    list = list.filter(a => norm(a.id) !== norm(CONFIG.MASTER_ID));
-    list.unshift({ id:CONFIG.MASTER_ID, hash:CONFIG.MASTER_DEFAULT_PASSWORD_SHA256, role:'master', playerId:null, createdAt:Date.now() });
-  }
-  // 처음 실행할 때만 테스트 일반 계정을 만들어 둡니다.
-  const t = CONFIG.TEST_MEMBER;
-  if(!raw && t && !list.some(a => norm(a.id) === norm(t.id)))
-    list.push({ id:t.id, hash:t.hash, role:'member', playerId:null, createdAt:Date.now() });
-  localStorage.setItem(ACC_KEY, JSON.stringify(list));
-  return list;
+let session = (() => { try{ return JSON.parse(localStorage.getItem(SESSION_KEY)); }catch{ return null; } })();
+function setSession(s){
+  session = s;
+  try{ s ? localStorage.setItem(SESSION_KEY, JSON.stringify(s)) : localStorage.removeItem(SESSION_KEY); }catch{}
 }
-let accounts = loadAccounts();
-const saveAccounts = () => localStorage.setItem(ACC_KEY, JSON.stringify(accounts));
-const findAccount = id => accounts.find(a => norm(a.id) === norm(id));
-const currentAccount = () => { const id = sessionStorage.getItem(SESSION_KEY); return id ? findAccount(id) || null : null; };
-const linkedPlayer = acc => (acc && acc.playerId) ? findPlayer(acc.playerId) || null : null;
-/* 권한 3단계
+const currentAccount = () => session ? session.account : null;
+const linkedPlayer = acc => (acc && acc.player_id) ? findPlayer(acc.player_id) || null : null;
+/* 권한 3단계 (서버에서도 똑같이 검사합니다)
    - master(마스터): 모든 기능 + 계정 관리(추가·삭제·권한 변경·일반 계정과 멤버 연결)
    - admin(관리자):  출/퇴근 · 드래프트 · 점수판 · 선수/기록 편집, 본인 아이디·비밀번호 관리
    - member(일반):   연결된 본인 멤버의 출/퇴근만, 본인 아이디·비밀번호 관리 */
@@ -437,7 +477,7 @@ const ROLES = {
   member: { label:'일반',   icon:'fa-user' },
 };
 const isLoggedIn = () => !!currentAccount();
-const isAdmin    = () => ['master','admin'].includes(currentAccount()?.role);   // 관리 기능 사용 가능
+const isAdmin    = () => ['master','admin'].includes(currentAccount()?.role);
 const isMaster   = () => currentAccount()?.role === 'master';
 const roleBadge = role => role === 'master'
   ? `<span class="tier-badge" style="background:var(--accent);color:#111"><i class="fa-solid fa-crown"></i>&nbsp;마스터</span>`
@@ -455,26 +495,29 @@ function openLogin(){
     footer:`<button class="btn" data-x>취소</button><button class="btn btn-primary" id="lgGo"><i class="fa-solid fa-right-to-bracket"></i> 로그인</button>`
   });
   $('[data-x]', m).onclick = closeModal;
-  const go = () => {
-    const msg = $('#lgMsg', m);
+  const go = async () => {
+    const msg = $('#lgMsg', m), btn = $('#lgGo', m);
+    if(btn.disabled) return;
     if(Date.now() < lockUntil){ msg.textContent = `잠시 후 다시 시도하세요 (${Math.ceil((lockUntil-Date.now())/1000)}초)`; return; }
     const id = $('#lgId', m).value.trim(), pw = $('#lgPw', m).value;
-    const acc = findAccount(id);
-    if(acc && hashPw(acc.id, pw) === acc.hash){
-      sessionStorage.setItem(SESSION_KEY, acc.id); loginFails = 0;
-      closeModal(); toast(`${ROLES[acc.role].label} 계정(${acc.id})으로 로그인했습니다`); route();
-    }else{
-      loginFails++;
-      if(loginFails >= 5){ lockUntil = Date.now() + 30000; loginFails = 0; }
-      msg.textContent = '아이디 또는 비밀번호가 올바르지 않습니다.';
-    }
+    if(!id || !pw){ msg.textContent = '아이디와 비밀번호를 입력하세요.'; return; }
+    btn.disabled = true; msg.textContent = '';
+    try{
+      const res = await API.rpc('login', { p_login:id, p_password:pw });
+      setSession({ token:res.token, account:res.account }); loginFails = 0;
+      closeModal(); toast(`${ROLES[res.account.role].label} 계정(${res.account.login_id})으로 로그인했습니다`); route();
+    }catch(e){
+      if(e.code === 'INVALID_LOGIN'){ loginFails++; if(loginFails >= 5){ lockUntil = Date.now() + 30000; loginFails = 0; } }
+      msg.textContent = errText(e) + '.';
+    }finally{ btn.disabled = false; }
   };
   $('#lgGo', m).onclick = go;
   $$('input', m).forEach(i => i.addEventListener('keydown', e => { if(e.key === 'Enter') go(); }));
   $('#lgId', m).focus();
 }
 function logout(){
-  sessionStorage.removeItem(SESSION_KEY);
+  if(session) API.rpc('logout', { p_token:session.token }).catch(() => {});
+  setSession(null);
   if(PAGES.find(p => p.id === current)?.need) history.replaceState(null, '', '#dashboard');
   toast('로그아웃했습니다'); route();
 }
@@ -528,8 +571,8 @@ function tierBadge(k){
   return `<span class="tier-badge" style="background:${t.color};color:${t.fg}">${esc(t.k)}</span>`;
 }
 /* ---------- 프로필 사진 (파일 업로드) ----------
-   업로드한 사진은 256×256 정사각형으로 줄인 뒤 "data URL"(그림을 글자로 바꾼 것) 형태로 저장합니다.
-   그래서 별도 서버 없이도 브라우저 저장소에 사진을 넣을 수 있습니다. */
+   업로드한 사진은 256×256 정사각형으로 줄인 뒤 "data URL"(그림을 글자로 바꾼 것) 형태로
+   Supabase의 photos 표에 저장합니다. */
 const PHOTO_SIZE = 256;
 function imageSrc(v){
   if(typeof v === 'string' && /^data:image\/(png|jpeg|webp|gif);base64,/.test(v)) return v;
@@ -582,7 +625,7 @@ function bindPhotoPicker(root, id, initial, getName){
 }
 
 function avatar(p, size=36){
-  const u = imageSrc(p.image), st = `width:${size}px;height:${size}px;font-size:${Math.round(size*.42)}px`;
+  const u = imageSrc('image' in p ? p.image : photos[p.id]), st = `width:${size}px;height:${size}px;font-size:${Math.round(size*.42)}px`;
   return u ? `<img class="avatar" style="${st}" src="${esc(u)}" alt="" onerror="this.style.visibility='hidden'">`
            : `<span class="avatar" style="${st}">${esc((p.name||'?').slice(0,1))}</span>`;
 }
@@ -664,7 +707,8 @@ function renderSidebar(){
     `<li><a href="#${p.id}" class="menu-item ${p.id===current?'active':''}"><i class="fa-solid ${p.icon}"></i> ${p.label}${p.need?'<i class="fa-solid fa-lock lock"></i>':''}</a></li>`).join('');
   const th = THEMES.find(t => t.id === theme);
   $('#sidebarBottom').innerHTML = `
-    ${acc ? `<div class="admin-pill"><i class="fa-solid ${ROLES[acc.role].icon}"></i><span>${ROLES[acc.role].label} · ${esc(acc.id)}</span></div>` : ''}
+    ${acc ? `<div class="admin-pill"><i class="fa-solid ${ROLES[acc.role].icon}"></i><span>${ROLES[acc.role].label} · ${esc(acc.login_id)}</span></div>` : ''}
+    <div id="syncStatus" class="sync-status"></div>
     <button class="menu-item" id="sbTheme"><i class="fa-solid ${th.icon}"></i> ${th.label}</button>
     ${admin ? `
       <button class="menu-item" id="sbExport"><i class="fa-solid fa-download"></i> 데이터 내보내기</button>
@@ -679,8 +723,10 @@ function renderSidebar(){
   }
   if(acc) $('#sbLogout').onclick = logout; else $('#sbLogin').onclick = openLogin;
   if(acc && !isMaster()) $('#sbMe').onclick = openMyAccountModal;
+  setSync(syncState);
 }
 function route(){
+  if(!booted) return;
   const id = location.hash.slice(1) || 'dashboard';
   let page = PAGES.find(p => p.id === id) || PAGES[0];
   if(!canOpen(page)){
@@ -694,13 +740,25 @@ function route(){
 const rerender = () => PAGES.find(p => p.id === current).render($('#page'));
 window.addEventListener('hashchange', route);
 
-/* ---------- 데이터 백업 ---------- */
+/* ---------- 데이터 백업 (사진 포함) ---------- */
 function exportData(){
-  const blob = new Blob([JSON.stringify(db, null, 2)], { type:'application/json' });
+  const blob = new Blob([JSON.stringify({ ...db, photos }, null, 2)], { type:'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = `iteri-backup-${todayStr()}.json`; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   toast('백업 파일을 내려받았습니다');
+}
+// 백업 파일이나 예전(브라우저 저장) 데이터를 서버에 올립니다. 현재 서버 데이터는 덮어씌워집니다.
+async function uploadData(d){
+  const sink = { ...(d.photos && typeof d.photos === 'object' ? d.photos : {}) };
+  db = normalizeDB(JSON.parse(JSON.stringify(d)), sink);
+  save(); rerender();
+  let n = 0;
+  for(const [pid, data] of Object.entries(sink)){
+    if(!db.players.some(p => p.id === pid) || typeof data !== 'string') continue;
+    try{ await savePhoto(pid, data); n++; }catch(e){ console.warn(e); }
+  }
+  rerender(); toast(`데이터를 올렸습니다${n ? ` (사진 ${n}장)` : ''}`);
 }
 $('#importFile').addEventListener('change', e => {
   const f = e.target.files[0]; e.target.value = '';
@@ -710,10 +768,8 @@ $('#importFile').addEventListener('change', e => {
     try{
       const d = JSON.parse(reader.result);
       if(!Array.isArray(d.players) || !Array.isArray(d.records)) throw new Error('형식 오류');
-      confirmDialog(`선수 ${d.players.length}명, 기록 ${d.records.length}개를 불러옵니다. 현재 데이터는 덮어씌워집니다.`, () => {
-        db = normalizeDB(d);
-        save(); route(); toast('데이터를 불러왔습니다');
-      }, { okLabel:'불러오기', danger:true });
+      confirmDialog(`선수 ${d.players.length}명, 기록 ${d.records.length}개를 서버에 올립니다. 지금 서버에 있는 데이터는 덮어씌워집니다.`,
+        () => uploadData(d), { okLabel:'불러오기', danger:true });
     }catch(err){ toast('올바른 이터리 백업 파일이 아닙니다', 'error'); }
   };
   reader.readAsText(f);
@@ -820,7 +876,15 @@ function renderAttendance(el){
       <div class="card"><h3 class="section">✅ 출근 (참여 중)</h3><div class="att-list">${present.map(item).join('') || emptyBox('fa-mug-hot','출근한 선수가 없습니다')}</div></div>
       <div class="card"><h3 class="section">❌ 퇴근 (미참여)</h3><div class="att-list">${absent.map(item).join('') || emptyBox('fa-check','모두 출근했습니다')}</div></div>
     </div>`}`;
-  const toggle = p => { p.present = !p.present; if(!p.present) p.team = null; save(); rerender(); toast(`${p.name} ${p.present?'출근':'퇴근'}`); };
+  const toggle = async p => {
+    const want = !p.present;
+    if(admin){ p.present = want; if(!want) p.team = null; save(); rerender(); }
+    else{   // 일반 계정은 서버 함수로 본인 것만
+      try{ setSync('saving'); await API.rpc('set_my_attendance', { p_token:session.token, p_present:want }); await refreshState(true); setSync('saved'); }
+      catch(e){ setSync('error'); return handleErr(e); }
+    }
+    toast(`${p.name} ${want?'출근':'퇴근'}`);
+  };
   $$('.att-item', el).forEach(it => it.onclick = () => {
     const p = findPlayer(it.dataset.pid);
     if(p && canToggle(p)) toggle(p);
@@ -1337,15 +1401,17 @@ function renderTiers(el){
     if(!name) return toast('닉네임을 입력하세요','error');
     if(db.players.some(p => norm(p.name) === norm(name))) return toast('같은 닉네임이 이미 있습니다','error');
     if(link && !safeUrl(link)) return toast('전적 링크는 http:// 또는 https:// 로 시작해야 합니다','error');
-    db.players.push({ id:uid(), name, ingame:$('#npIngame').value.trim(), tier:$('#npTier').value || null, link, image,
+    const id = uid();
+    db.players.push({ id, name, ingame:$('#npIngame').value.trim(), tier:$('#npTier').value || null, link,
                       present:false, team:null, bonusWins:0, bonusGames:0, createdAt:Date.now() });
     save(); rerender(); toast(`${name} 선수를 등록했습니다`);
+    if(image) savePhoto(id, image).then(() => { save(); rerender(); }).catch(handleErr);
   };
   $('#npName').addEventListener('keydown', e => { if(e.key === 'Enter') $('#npAdd').click(); });
   const sample = $('#npSample');
   if(sample) sample.onclick = () => {
     ['가람','나래','다온','라온','마루','바다','새봄','아라','자몽','하늘'].forEach((n,i) =>
-      db.players.push({ id:uid(), name:n, ingame:'', tier:TIERS[i % TIERS.length].k, link:'', image:'', present:true, team:null, bonusWins:0, bonusGames:0, createdAt:Date.now() }));
+      db.players.push({ id:uid(), name:n, ingame:'', tier:TIERS[i % TIERS.length].k, link:'', present:true, team:null, bonusWins:0, bonusGames:0, createdAt:Date.now() }));
     save(); rerender(); toast('예시 선수를 넣었습니다. 연습 후 삭제하세요.');
   };
 }
@@ -1353,6 +1419,7 @@ function deletePlayer(p){
   db.players = db.players.filter(x => x !== p);
   db.score.teams.forEach(t => t.members = t.members.filter(m => m.pid !== p.id));
   save(); closeModal(); rerender(); toast(`${p.name} 선수를 삭제했습니다`);
+  if(photos[p.id]) savePhoto(p.id, null).catch(() => {});
 }
 
 /* ---------- 선수 정보 수정 모달 (티어표 · 리더보드 · 개인 기록에서 공통 사용) ---------- */
@@ -1373,7 +1440,8 @@ function openPlayerEditor(p){
   });
   $('[data-x]', m).onclick = closeModal;
   $('#peDel', m).onclick = () => confirmDialog(`"${p.name}" 선수를 삭제할까요? (우승 기록에 적힌 이름은 남습니다)`, () => deletePlayer(p), { okLabel:'삭제', danger:true });
-  const pePhoto = bindPhotoPicker(m, 'pePhoto', imageSrc(p.image) ? p.image : '', () => $('#peName', m).value.trim());
+  const oldPhoto = photos[p.id] || '';
+  const pePhoto = bindPhotoPicker(m, 'pePhoto', oldPhoto, () => $('#peName', m).value.trim());
   $('#peSave', m).onclick = () => {
     const name = $('#peName', m).value.trim(), link = $('#peLink', m).value.trim(), image = pePhoto.value;
     if(pePhoto.busy) return toast('사진을 처리하는 중입니다. 잠시 후 다시 눌러주세요','error');
@@ -1382,9 +1450,10 @@ function openPlayerEditor(p){
     if(db.players.some(x => x !== p && norm(x.name) === norm(name))) return toast('같은 닉네임이 이미 있습니다','error');
     if(link && !safeUrl(link)) return toast('전적 링크는 http:// 또는 https:// 로 시작해야 합니다','error');
     if(bg < bw) return toast('게임 수는 승수보다 크거나 같아야 합니다','error');
-    Object.assign(p, { name, ingame:$('#peIngame', m).value.trim(), tier:$('#peTier', m).value || null, link, image, bonusWins:bw, bonusGames:bg });
+    Object.assign(p, { name, ingame:$('#peIngame', m).value.trim(), tier:$('#peTier', m).value || null, link, bonusWins:bw, bonusGames:bg });
     db.score.teams.forEach(t => t.members.forEach(x => { if(x.pid === p.id) x.name = name; }));
     save(); closeModal(); rerender(); toast('저장했습니다');
+    if(image !== oldPhoto) savePhoto(p.id, image).then(() => { save(); rerender(); }).catch(handleErr);
   };
 }
 
@@ -1392,36 +1461,34 @@ function openPlayerEditor(p){
    [페이지 9] 관리자 설정 (마스터 전용)
    - 계정 추가(관리자/일반) · 권한 변경 · 일반 계정과 멤버 연결 · 비밀번호 초기화 · 삭제
    - 관리자·일반 계정은 사이드바 [내 계정]에서 본인 아이디·비밀번호만 바꿉니다.
+   - 모든 계정 작업은 서버 함수가 마스터인지 확인한 뒤에만 처리합니다.
    ===================================================================== */
 const MIN_PW = 8;
 const ID_HINT = '영문·숫자·_ 2~20자';
-// "내 계정" 입력 칸 (마스터는 설정 화면, 나머지는 팝업에서 같이 씀)
 const myAccountFields = acc => `
-  <label class="field">아이디 (${ID_HINT})<input class="input" id="maId" value="${esc(acc.id)}" autocomplete="username" autocapitalize="off" spellcheck="false"></label>
+  <label class="field">아이디 (${ID_HINT})<input class="input" id="maId" value="${esc(acc.login_id)}" autocomplete="username" autocapitalize="off" spellcheck="false"></label>
   <label class="field">현재 비밀번호 <span class="small">(변경하려면 꼭 입력)</span><input class="input" type="password" id="maCur" autocomplete="current-password"></label>
   <label class="field">새 비밀번호 (${MIN_PW}자 이상, 바꾸지 않으려면 비워두기)<input class="input" type="password" id="maNew" autocomplete="new-password"></label>
   <label class="field">새 비밀번호 확인<input class="input" type="password" id="maNew2" autocomplete="new-password"></label>`;
-// 성공하면 true. 아이디가 바뀌면 비밀번호 해시도 새 아이디로 다시 만듭니다.
-function saveMyAccount(root){
+// 성공하면 true
+async function saveMyAccount(root){
   const me = currentAccount();
   const id = $('#maId', root).value.trim(), cur = $('#maCur', root).value;
   const nw = $('#maNew', root).value, nw2 = $('#maNew2', root).value;
-  const idChanged = id !== me.id, pwChanged = nw !== '' || nw2 !== '';
+  const idChanged = id !== me.login_id, pwChanged = nw !== '' || nw2 !== '';
   if(!idChanged && !pwChanged){ toast('바뀐 내용이 없습니다','error'); return false; }
-  if(hashPw(me.id, cur) !== me.hash){ toast('현재 비밀번호가 올바르지 않습니다','error'); return false; }
-  if(idChanged){
-    if(!ID_RULE.test(id)){ toast(`아이디는 ${ID_HINT}여야 합니다`,'error'); return false; }
-    const other = findAccount(id);
-    if(other && other !== me){ toast('이미 사용 중인 아이디입니다','error'); return false; }
-  }
+  if(!cur){ toast('현재 비밀번호를 입력하세요','error'); return false; }
+  if(idChanged && !ID_RULE.test(id)){ toast(`아이디는 ${ID_HINT}여야 합니다`,'error'); return false; }
   if(pwChanged){
     if(nw.length < MIN_PW){ toast(`새 비밀번호는 ${MIN_PW}자 이상이어야 합니다`,'error'); return false; }
     if(nw !== nw2){ toast('새 비밀번호 확인이 일치하지 않습니다','error'); return false; }
     if(nw === cur){ toast('현재 비밀번호와 다른 비밀번호를 쓰세요','error'); return false; }
   }
-  me.id = id;
-  me.hash = hashPw(id, pwChanged ? nw : cur);
-  saveAccounts(); sessionStorage.setItem(SESSION_KEY, id);
+  try{
+    const acc = await API.rpc('update_my_account', { p_token:session.token, p_current:cur,
+      p_new_login: idChanged ? id : null, p_new_password: pwChanged ? nw : null });
+    setSession({ ...session, account:acc });
+  }catch(e){ handleErr(e); return false; }
   toast(idChanged && pwChanged ? '아이디와 비밀번호를 변경했습니다' : idChanged ? '아이디를 변경했습니다' : '비밀번호를 변경했습니다');
   return true;
 }
@@ -1431,23 +1498,22 @@ function openMyAccountModal(){
     body:`<div style="display:flex;gap:10px;align-items:center">${roleBadge(me.role)}${linkedPlayer(me) ? `<span class="small muted">연결 멤버: <b>${esc(linkedPlayer(me).name)}</b></span>` : ''}</div>${myAccountFields(me)}`,
     footer:`<button class="btn" data-x>취소</button><button class="btn btn-primary" id="maSave"><i class="fa-solid fa-floppy-disk"></i> 저장</button>` });
   $('[data-x]', m).onclick = closeModal;
-  $('#maSave', m).onclick = () => { if(saveMyAccount(m)){ closeModal(); renderSidebar(); } };
+  $('#maSave', m).onclick = async () => { const b = $('#maSave', m); b.disabled = true; if(await saveMyAccount(m)){ closeModal(); renderSidebar(); } else b.disabled = false; };
 }
-function renderSettings(el){
+let settingsAccounts = null;   // 마지막으로 불러온 계정 목록
+async function renderSettings(el){
   const me = currentAccount();
   const fmtDate = t => { if(!t) return '-'; const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
   const roleSelect = (attr, sel) => `<select class="input" ${attr} style="width:auto;padding:5px 8px">
       <option value="admin" ${sel==='admin'?'selected':''}>관리자</option><option value="member" ${sel==='member'?'selected':''}>일반</option></select>`;
-  // 멤버 선택 상자: 이미 다른 계정에 연결된 멤버는 고를 수 없게
-  const playerSelect = (attr, acc) => {
-    const taken = new Set(accounts.filter(a => a !== acc && a.playerId).map(a => a.playerId));
-    return `<select class="input" ${attr} style="width:auto;min-width:120px;padding:5px 8px"><option value="">연결 안 함</option>
-      ${[...db.players].sort((a,b) => a.name.localeCompare(b.name,'ko')).map(p =>
-        `<option value="${esc(p.id)}" ${acc && acc.playerId===p.id?'selected':''} ${taken.has(p.id)?'disabled':''}>${esc(p.name)}${taken.has(p.id)?' (연결됨)':''}</option>`).join('')}</select>`;
-  };
-  const order = { master:0, admin:1, member:2 };
-  const list = [...accounts].sort((a,b) => order[a.role] - order[b.role] || a.id.localeCompare(b.id));
-  el.innerHTML = `
+  const draw = list => {
+    const taken = acc => new Set(list.filter(a => a !== acc && a.player_id).map(a => a.player_id));
+    const playerSelect = (attr, acc) => { const t = taken(acc);
+      return `<select class="input" ${attr} style="width:auto;min-width:120px;padding:5px 8px"><option value="">연결 안 함</option>
+        ${[...db.players].sort((a,b) => a.name.localeCompare(b.name,'ko')).map(p =>
+          `<option value="${esc(p.id)}" ${acc && acc.player_id===p.id?'selected':''} ${t.has(p.id)?'disabled':''}>${esc(p.name)}${t.has(p.id)?' (연결됨)':''}</option>`).join('')}</select>`; };
+    const legacy = (() => { try{ const d = JSON.parse(localStorage.getItem('irido_db_v1')); return d && Array.isArray(d.players) && d.players.length ? d : null; }catch{ return null; } })();
+    el.innerHTML = `
     <header class="page-header"><div><h2 class="page-title">관리자 설정</h2><p class="page-sub">마스터 전용 · 계정과 멤버 연결을 관리합니다</p></div></header>
     <div class="settings-layout">
       <div class="card">
@@ -1462,15 +1528,18 @@ function renderSettings(el){
           ${roleBadge('admin')} 출/퇴근 · 드래프트 · 점수판 · 선수/기록 편집 · 본인 계정 관리<br>
           ${roleBadge('member')} 연결된 본인 멤버의 출/퇴근 · 본인 계정 관리
         </div>
+        ${legacy ? `<div class="notice" style="margin-top:12px;line-height:1.7"><b>이 브라우저에 예전 데이터가 있습니다</b><br>
+          서버로 옮기기 전, 이 브라우저에만 저장되던 선수 ${legacy.players.length}명 · 기록 ${(legacy.records||[]).length}개입니다.<br>
+          <button class="btn btn-sm" id="legacyUp" style="margin-top:8px"><i class="fa-solid fa-cloud-arrow-up"></i> 서버로 올리기</button></div>` : ''}
       </div>
       <div class="card">
         <h3 class="section"><i class="fa-solid fa-users-gear"></i> 계정 관리</h3>
         <div class="tbl-wrap" style="margin-bottom:18px"><table class="tbl">
           <thead><tr><th>아이디</th><th>권한</th><th>연결 멤버</th><th>등록일</th><th></th></tr></thead>
-          <tbody>${list.map(a => `<tr><td><b>${esc(a.id)}</b></td>
+          <tbody>${list.map(a => `<tr><td><b>${esc(a.login_id)}</b></td>
             <td>${a.role === 'master' ? roleBadge('master') : roleSelect(`data-role="${esc(a.id)}"`, a.role)}</td>
             <td>${a.role === 'member' ? playerSelect(`data-link="${esc(a.id)}"`, a) : '<span class="muted small">-</span>'}</td>
-            <td class="muted small" style="white-space:nowrap">${fmtDate(a.createdAt)}</td>
+            <td class="muted small" style="white-space:nowrap">${fmtDate(a.created_at)}</td>
             <td style="text-align:right;white-space:nowrap">${a.role === 'master' ? '<span class="small muted">삭제 불가</span>' : `
               <button class="btn btn-sm" data-reset="${esc(a.id)}"><i class="fa-solid fa-rotate"></i> 비밀번호 초기화</button>
               <button class="btn btn-sm btn-danger" data-remove="${esc(a.id)}"><i class="fa-solid fa-trash"></i> 삭제</button>`}</td></tr>`).join('')}
@@ -1486,60 +1555,86 @@ function renderSettings(el){
         <p class="small muted" style="margin-top:10px">일반 계정은 연결된 멤버의 출/퇴근만 바꿀 수 있습니다. 멤버는 나중에 표에서 연결해도 됩니다.</p>
       </div>
     </div>`;
-
-  $('#maSave').onclick = () => { if(saveMyAccount($('#maBox'))){ renderSidebar(); rerender(); } };
-  const syncLinkField = () => { $('#acLinkWrap').style.display = $('#acRole').value === 'member' ? '' : 'none'; };
-  $('#acRole').onchange = syncLinkField; syncLinkField();
-  $('#acAdd').onclick = () => {
-    const id = $('#acId').value.trim(), pw = $('#acPw').value, role = $('#acRole').value === 'admin' ? 'admin' : 'member';
-    if(!ID_RULE.test(id)) return toast(`아이디는 ${ID_HINT}여야 합니다`,'error');
-    if(findAccount(id)) return toast('이미 사용 중인 아이디입니다','error');
-    if(pw.length < MIN_PW) return toast(`초기 비밀번호는 ${MIN_PW}자 이상이어야 합니다`,'error');
-    accounts.push({ id, hash:hashPw(id, pw), role, playerId: role === 'member' ? ($('#acLink').value || null) : null, createdAt:Date.now() });
-    saveAccounts(); rerender(); toast(`${id} ${ROLES[role].label} 계정을 추가했습니다`);
+    bind(list, legacy);
   };
-  $$('[data-role]', el).forEach(sel => sel.onchange = () => {
-    const acc = findAccount(sel.dataset.role);
-    if(!acc || acc.role === 'master') return;
-    acc.role = sel.value === 'admin' ? 'admin' : 'member';
-    if(acc.role !== 'member') acc.playerId = null;
-    saveAccounts(); rerender(); toast(`${acc.id} → ${ROLES[acc.role].label}`);
-  });
-  $$('[data-link]', el).forEach(sel => sel.onchange = () => {
-    const acc = findAccount(sel.dataset.link);
-    if(!acc) return;
-    acc.playerId = sel.value || null;
-    saveAccounts(); rerender();
-    toast(acc.playerId ? `${acc.id} ↔ ${findPlayer(acc.playerId).name} 연결` : `${acc.id} 연결 해제`);
-  });
-  $$('[data-remove]', el).forEach(b => b.onclick = () => {
-    const id = b.dataset.remove;
-    confirmDialog(`${id} 계정을 삭제할까요?`, () => {
-      accounts = accounts.filter(a => !(norm(a.id) === norm(id) && a.role !== 'master'));
-      saveAccounts(); rerender(); toast('계정을 삭제했습니다');
-    }, { okLabel:'삭제', danger:true });
-  });
-  $$('[data-reset]', el).forEach(b => b.onclick = () => {
-    const acc = findAccount(b.dataset.reset);
-    const m = openModal({ title:'<i class="fa-solid fa-rotate"></i> 비밀번호 초기화',
-      body:`<p class="small muted">${esc(acc.id)} 계정의 새 비밀번호를 정합니다.</p>
-        <label class="field">새 비밀번호 (${MIN_PW}자 이상)<input class="input" type="password" id="rsPw" autocomplete="new-password"></label>`,
-      footer:`<button class="btn" data-x>취소</button><button class="btn btn-primary" id="rsGo">변경</button>` });
-    $('[data-x]', m).onclick = closeModal;
-    $('#rsGo', m).onclick = () => {
-      const pw = $('#rsPw', m).value;
-      if(pw.length < MIN_PW) return toast(`비밀번호는 ${MIN_PW}자 이상이어야 합니다`,'error');
-      acc.hash = hashPw(acc.id, pw); saveAccounts(); closeModal(); toast('비밀번호를 초기화했습니다');
+  const reload = async () => {
+    try{ settingsAccounts = await API.rpc('list_accounts', { p_token:session.token }); }
+    catch(e){ handleErr(e); return; }
+    if(current === 'settings') draw(settingsAccounts);
+  };
+  const act = async (fn, args, okMsg) => {
+    try{ await API.rpc(fn, { p_token:session.token, ...args }); if(okMsg) toast(okMsg); }
+    catch(e){ handleErr(e); }
+    await reload();
+  };
+  const bind = (list, legacy) => {
+    $('#maSave').onclick = async () => { const b = $('#maSave'); b.disabled = true; if(await saveMyAccount($('#maBox'))){ renderSidebar(); draw(list); } else b.disabled = false; };
+    const syncLinkField = () => { $('#acLinkWrap').style.display = $('#acRole').value === 'member' ? '' : 'none'; };
+    $('#acRole').onchange = syncLinkField; syncLinkField();
+    $('#acAdd').onclick = () => {
+      const id = $('#acId').value.trim(), pw = $('#acPw').value, role = $('#acRole').value === 'admin' ? 'admin' : 'member';
+      if(!ID_RULE.test(id)) return toast(`아이디는 ${ID_HINT}여야 합니다`,'error');
+      if(pw.length < MIN_PW) return toast(`초기 비밀번호는 ${MIN_PW}자 이상이어야 합니다`,'error');
+      act('add_account', { p_login:id, p_password:pw, p_role:role, p_player_id: role === 'member' ? ($('#acLink').value || null) : null },
+          `${id} ${ROLES[role].label} 계정을 추가했습니다`);
     };
-    $('#rsPw', m).focus();
-  });
+    $$('[data-role]', el).forEach(sel => sel.onchange = () => {
+      const acc = list.find(a => a.id === sel.dataset.role); if(!acc) return;
+      act('update_account', { p_account_id:acc.id, p_role:sel.value, p_player_id: sel.value === 'member' ? acc.player_id : null },
+          `${acc.login_id} → ${ROLES[sel.value].label}`);
+    });
+    $$('[data-link]', el).forEach(sel => sel.onchange = () => {
+      const acc = list.find(a => a.id === sel.dataset.link); if(!acc) return;
+      const pid = sel.value || null;
+      act('update_account', { p_account_id:acc.id, p_role:acc.role, p_player_id:pid },
+          pid ? `${acc.login_id} ↔ ${findPlayer(pid)?.name || ''} 연결` : `${acc.login_id} 연결 해제`);
+    });
+    $$('[data-remove]', el).forEach(b => b.onclick = () => {
+      const acc = list.find(a => a.id === b.dataset.remove); if(!acc) return;
+      confirmDialog(`${acc.login_id} 계정을 삭제할까요?`, () => act('delete_account', { p_account_id:acc.id }, '계정을 삭제했습니다'), { okLabel:'삭제', danger:true });
+    });
+    $$('[data-reset]', el).forEach(b => b.onclick = () => {
+      const acc = list.find(a => a.id === b.dataset.reset); if(!acc) return;
+      const m = openModal({ title:'<i class="fa-solid fa-rotate"></i> 비밀번호 초기화',
+        body:`<p class="small muted">${esc(acc.login_id)} 계정의 새 비밀번호를 정합니다. 그 계정은 로그아웃됩니다.</p>
+          <label class="field">새 비밀번호 (${MIN_PW}자 이상)<input class="input" type="password" id="rsPw" autocomplete="new-password"></label>`,
+        footer:`<button class="btn" data-x>취소</button><button class="btn btn-primary" id="rsGo">변경</button>` });
+      $('[data-x]', m).onclick = closeModal;
+      $('#rsGo', m).onclick = () => {
+        const pw = $('#rsPw', m).value;
+        if(pw.length < MIN_PW) return toast(`비밀번호는 ${MIN_PW}자 이상이어야 합니다`,'error');
+        closeModal(); act('reset_password', { p_account_id:acc.id, p_password:pw }, '비밀번호를 초기화했습니다');
+      };
+      $('#rsPw', m).focus();
+    });
+    if(legacy) $('#legacyUp').onclick = () => confirmDialog(
+      `이 브라우저의 예전 데이터(선수 ${legacy.players.length}명)를 서버에 올립니다. 지금 서버에 있는 데이터는 덮어씌워집니다.`,
+      async () => { await uploadData(legacy); localStorage.removeItem('irido_db_v1'); }, { okLabel:'올리기', danger:true });
+  };
+  if(settingsAccounts) draw(settingsAccounts);
+  else el.innerHTML = `<div class="card">${emptyBox('fa-spinner fa-spin','계정 목록을 불러오는 중...')}</div>`;
+  reload();
 }
 
-/* ---------- 시작 ---------- */
-document.title = `${CONFIG.SITE_NAME} - 내전 매니저`;
-$('#brandName').textContent = CONFIG.SITE_NAME;
-applyTheme();
-route();
+/* ---------- 시작: 서버에서 데이터·로그인 상태를 불러온 뒤 화면 표시 ---------- */
+async function boot(){
+  document.title = `${CONFIG.SITE_NAME} - 내전 매니저`;
+  $('#brandName').textContent = CONFIG.SITE_NAME;
+  applyTheme(); renderSidebar();
+  $('#page').innerHTML = `<div class="card">${emptyBox('fa-spinner fa-spin','데이터를 불러오는 중...')}</div>`;
+  try{ await Promise.all([loadState(), loadPhotos()]); }
+  catch(e){
+    console.error(e); setSync('offline');
+    $('#page').innerHTML = `<div class="card">${emptyBox('fa-plug-circle-xmark','서버에 연결할 수 없습니다.<br>잠시 후 새로고침해 주세요.')}</div>`;
+    return;
+  }
+  if(session){   // 저장된 로그인이 아직 유효한지 서버에 확인
+    try{ setSession({ ...session, account: await API.rpc('me', { p_token:session.token }) }); }
+    catch(e){ if(e.code === 'AUTH_REQUIRED') setSession(null); }
+  }
+  booted = true; setSync('saved'); route();
+}
+boot();
 </script>
 </body>
 </html>
