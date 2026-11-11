@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+index.html<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -279,15 +279,15 @@ tr.cp-reached td{background:rgba(255,71,87,.08)}
    - MASTER_ID: 마스터 계정 아이디. 마스터는 하나뿐이며 삭제할 수 없습니다.
    - *_SHA256: 기본 비밀번호의 해시값. 비밀번호 원문은 파일에 넣지 않고
      "아이디(소문자)|비밀번호"를 SHA-256으로 변환한 값만 넣습니다.
-       마스터 PIE      기본 비밀번호: abcd1234!@
-       테스트 PIEtest  기본 비밀번호: test1234!@  (일반 계정, 필요 없으면 TEST_MEMBER: null)
+       마스터 MASTER  기본 비밀번호: abcd1234!@
+       일반   PIE     기본 비밀번호: test1234!@  (필요 없으면 TEST_MEMBER: null)
      로그인한 뒤 꼭 비밀번호를 바꾸세요.
    ===================================================================== */
 const CONFIG = {
   SITE_NAME: '이터리',
-  MASTER_ID: 'PIE',
-  MASTER_DEFAULT_PASSWORD_SHA256: 'a6f0f918e80601606a30ddd35ea0d29b47b18016f97da629d71f3cf685a5bc97',
-  TEST_MEMBER: { id:'PIEtest', hash:'176df2699c5306b2d0a959f6705cc0e23a7409151359fe8524eb31d0bb91e159' },
+  MASTER_ID: 'MASTER',
+  MASTER_DEFAULT_PASSWORD_SHA256: '478fd8538616f6ba3307858a6dd298c23c48d0f666953c5314699503e489a5bd',
+  TEST_MEMBER: { id:'PIE', hash:'a413f83198aa49f922274cbce8d2a68a2d3bc1eda27b3da144a8a4ea73331626' },
 };
 
 /* ---------- 티어 정의 (이름, 코스트, 색) ---------- */
@@ -390,14 +390,14 @@ const sha256 = (() => {
 })();
 
 /* =====================================================================
-   계정 (브라우저 localStorage의 iteri_accounts_v2 에 저장)
+   계정 (브라우저 localStorage의 iteri_accounts_v3 에 저장)
    { id, hash, role, playerId, createdAt }
    - id:       로그인 아이디 (영문·숫자·_ 2~20자, 대소문자 구분 없이 비교)
    - hash:     sha256("아이디(소문자)|비밀번호")
    - role:     'master' | 'admin' | 'member'
    - playerId: 일반 계정과 연결된 선수(멤버). 일반 계정은 이 선수의 출퇴근만 바꿀 수 있습니다.
    ===================================================================== */
-const ACC_KEY = 'iteri_accounts_v2';
+const ACC_KEY = 'iteri_accounts_v3';
 const SESSION_KEY = 'iteri_session';
 const ID_RULE = /^[A-Za-z0-9_]{2,20}$/;
 const hashPw = (id, pw) => sha256(norm(id) + '|' + pw);
