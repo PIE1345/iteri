@@ -1,0 +1,1696 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<!-- 웹 앱(PWA) 설정: 홈 화면에 설치하면 앱처럼 열립니다 -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#111111">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ETER:RE">
+<title>이터리 - 내전 매니저</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+/* =========================================================
+   1. 테마 색상 (다크 / 화이트 / 베이지)
+   - CSS 변수(--이름)를 바꾸면 사이트 전체 색이 바뀝니다.
+   ========================================================= */
+:root{
+  --bg-main:#050505; --bg-panel:#111; --bg-hover:#1a1a1a; --bg-input:#000; --bg-details:#080808;
+  --text-main:#e0e0e0; --text-muted:#7e7e7e; --border-color:#2a2a2a;
+  --accent:#eebc51; --accent-dim:rgba(238,188,81,.1);
+  --danger:#ff4757; --success:#2ed573; --sidebar-w:250px;
+}
+body.light-mode{
+  --bg-main:#f0f2f5; --bg-panel:#fff; --bg-hover:#f5f6f8; --bg-input:#fff; --bg-details:#f1f2f6;
+  --text-main:#1c1e21; --text-muted:#65676b; --border-color:#e4e6eb;
+  --accent:#d35400; --accent-dim:rgba(211,84,0,.1);
+}
+body.beige-mode{
+  --bg-main:#f5f1e6; --bg-panel:#fffdf5; --bg-hover:#efe9db; --bg-input:#fffdf5; --bg-details:#efeadd;
+  --text-main:#4a4036; --text-muted:#8c8379; --border-color:#dcd3c5;
+  --accent:#b08d55; --accent-dim:rgba(176,141,85,.12);
+}
+
+/* 2. 기본 초기화 */
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{min-height:100%}
+body{background:var(--bg-main);color:var(--text-main);font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Malgun Gothic',sans-serif;transition:background-color .3s,color .3s;font-size:15px}
+a{color:inherit;text-decoration:none}
+button,input,select,textarea{font-family:inherit;font-size:inherit}
+ul{list-style:none}
+
+/* 3. 전체 레이아웃: 왼쪽 사이드바 + 오른쪽 본문 */
+.app{display:flex;min-height:100vh}
+.sidebar{width:var(--sidebar-w);background:var(--bg-panel);border-right:1px solid var(--border-color);display:flex;flex-direction:column;padding:28px 16px;position:sticky;top:0;height:100vh;flex-shrink:0;overflow-y:auto;z-index:50}
+.brand{font-size:24px;font-weight:800;color:var(--accent);text-align:center;padding-bottom:20px;margin-bottom:24px;border-bottom:1px solid var(--border-color);letter-spacing:-.5px}
+.brand small{display:block;font-size:11px;font-weight:600;color:var(--text-muted);letter-spacing:2px;margin-top:4px}
+.menu{display:flex;flex-direction:column;gap:6px;flex-grow:1}
+.menu-item{display:flex;align-items:center;gap:12px;padding:12px 16px;color:var(--text-muted);border-radius:4px;font-weight:600;font-size:15px;border:0;border-left:3px solid transparent;cursor:pointer;transition:.2s;background:none;width:100%;text-align:left}
+.menu-item i{width:20px;text-align:center}
+.menu-item:hover{background:var(--bg-hover);color:var(--text-main)}
+.menu-item.active{background:var(--accent-dim);color:var(--accent);border-left-color:var(--accent)}
+.menu-item .lock{margin-left:auto;font-size:11px;opacity:.6;width:auto}
+.sidebar-bottom{margin-top:20px;padding-top:16px;border-top:1px solid var(--border-color);display:flex;flex-direction:column;gap:2px}
+.admin-pill{font-size:12px;color:var(--success);background:rgba(46,213,115,.1);border-radius:6px;padding:8px 12px;margin-bottom:6px;display:flex;gap:8px;align-items:center;word-break:break-all}
+.install-btn{color:var(--accent)!important}
+@media (display-mode: standalone){ .sidebar{padding-top:max(28px, env(safe-area-inset-top))} .content{padding-bottom:max(60px, env(safe-area-inset-bottom))} }
+.sync-status{font-size:12px;color:var(--text-muted);padding:4px 12px 8px;display:flex;gap:6px;align-items:center}
+.sync-status.saved i{color:var(--success)}
+.sync-status.error,.sync-status.offline{color:var(--danger)}
+.sidebar-footer{text-align:center;font-size:12px;color:var(--text-muted);margin-top:16px}
+.content{flex:1;padding:36px 40px 60px;min-width:0}
+
+/* 4. 공통 컴포넌트 */
+.page-header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:28px}
+.page-title{font-size:28px;font-weight:800;letter-spacing:-.5px}
+.page-sub{color:var(--text-muted);margin-top:6px;font-size:14px}
+.header-right{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.card{background:var(--bg-panel);border:1px solid var(--border-color);border-radius:12px;padding:22px;min-width:0}
+.card-header{font-weight:700;color:var(--text-muted);font-size:14px;margin-bottom:16px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap}
+.card-header .left{display:flex;align-items:center;gap:8px}
+.card-header i{color:var(--accent)}
+h3.section{font-size:17px;font-weight:800;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+h3.section i{color:var(--accent)}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:7px;border:1px solid var(--border-color);background:var(--bg-hover);color:var(--text-main);font-weight:600;font-size:14px;cursor:pointer;transition:.15s;white-space:nowrap}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#111}
+.btn-primary:hover{filter:brightness(1.1);color:#111}
+.btn-danger{background:transparent;border-color:var(--danger);color:var(--danger)}
+.btn-danger:hover{background:var(--danger);color:#fff}
+.btn-sm{padding:5px 10px;font-size:12px;border-radius:6px}
+.icon-btn{background:none;border:0;color:var(--text-muted);cursor:pointer;padding:6px;border-radius:6px;font-size:14px}
+.icon-btn:hover{color:var(--accent);background:var(--bg-hover)}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.input,select.input,textarea.input{background:var(--bg-input);border:1px solid var(--border-color);color:var(--text-main);padding:9px 12px;border-radius:6px;font-size:14px;outline:none;width:100%;transition:border-color .15s}
+.input:focus{border-color:var(--accent)}
+label.field{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--text-muted);font-weight:600}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;align-items:end}
+.muted{color:var(--text-muted)}
+.small{font-size:12px}
+.empty{color:var(--text-muted);text-align:center;padding:40px 10px;font-size:14px;line-height:1.7}
+.empty i{font-size:28px;display:block;margin-bottom:10px;opacity:.5}
+.search-box{position:relative}
+.search-box input{padding-left:34px;min-width:230px}
+.search-box i{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:13px}
+
+/* 표 */
+.tbl-wrap{overflow-x:auto}
+table.tbl{width:100%;border-collapse:collapse}
+.tbl th{text-align:left;color:var(--text-muted);font-size:12px;font-weight:700;padding:10px 12px;border-bottom:1px solid var(--border-color);white-space:nowrap}
+.tbl td{padding:11px 12px;border-bottom:1px solid var(--border-color);font-size:14px;vertical-align:middle}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tr.clickable{cursor:pointer}
+.tbl tr.clickable:hover td{background:var(--bg-hover)}
+.tbl tr.selected td{background:var(--accent-dim)}
+.num{font-variant-numeric:tabular-nums}
+.rank-1{color:#f1c40f;font-weight:800}
+.rank-2{color:#bdc3c7;font-weight:800}
+.rank-3{color:#cd7f32;font-weight:800}
+
+/* 티어 배지, 아바타, 칩 */
+.tier-badge{display:inline-flex;align-items:center;justify-content:center;min-width:34px;padding:2px 8px;border-radius:4px;font-weight:800;font-size:12px;line-height:1.5;white-space:nowrap}
+.tier-badge.unranked{background:var(--bg-hover);color:var(--text-muted);border:1px solid var(--border-color)}
+.avatar{border-radius:50%;object-fit:cover;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;background:var(--bg-hover);border:2px solid var(--border-color);color:var(--text-muted);font-weight:800}
+.chip{display:inline-flex;align-items:center;gap:8px;padding:5px 10px 5px 5px;border-radius:999px;background:var(--bg-hover);border:1px solid var(--border-color);font-size:13px;font-weight:600;cursor:pointer;user-select:none;transition:.15s}
+.chip:hover{border-color:var(--accent)}
+.chip.selected{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim)}
+.chip.dragging{opacity:.4}
+.chip .cost{font-size:11px;color:var(--text-muted)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.name-chip{display:inline-block;padding:2px 8px;margin:2px 4px 2px 0;border-radius:4px;background:var(--bg-hover);font-size:12px}
+.dropzone.drag-over{outline:2px dashed var(--accent);outline-offset:-4px;background:var(--accent-dim)}
+
+/* 5. 대시보드 (벤토 그리드) */
+.bento{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.stat-body{display:flex;align-items:center;gap:14px}
+.stat-name{font-size:20px;font-weight:800}
+.stat-value{color:var(--accent);font-weight:700;margin-top:3px}
+.dist-row{display:flex;align-items:center;gap:10px;padding:5px 0}
+.dist-row .tier-badge{min-width:76px}
+.dist-bar{flex:1;height:10px;border-radius:5px;background:var(--bg-hover);overflow:hidden}
+.dist-bar span{display:block;height:100%;border-radius:5px;transition:width .3s}
+.dist-row b{width:24px;text-align:right}
+.winner-card{position:relative;overflow:hidden}
+.winner-card::before{content:'';position:absolute;inset:-40% -40% auto auto;width:220px;height:220px;background:radial-gradient(circle,var(--accent-dim),transparent 70%);pointer-events:none}
+.winner-team{font-size:22px;font-weight:800;color:var(--accent);margin-bottom:6px}
+.podium-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border-color)}
+.podium-row:last-child{border-bottom:0}
+.podium-rank{width:26px;font-weight:800;text-align:center}
+
+/* 6. 출/퇴근 */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.settings-layout{display:grid;grid-template-columns:minmax(300px,0.8fr) 1.4fr;gap:20px;align-items:start}
+.att-list{display:flex;flex-direction:column;gap:6px;max-height:65vh;overflow-y:auto}
+.att-item{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:8px;border:1px solid var(--border-color);cursor:pointer;transition:.15s;background:var(--bg-details)}
+.att-item:hover{border-color:var(--accent)}
+.att-item .grow{flex:1;font-weight:600}
+.att-item.locked{cursor:default;opacity:.75}
+.att-item.locked:hover{border-color:var(--border-color)}
+.att-item.mine{border-color:var(--accent)}
+.my-att{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.summary b{color:var(--accent)}
+
+/* 7. 드래프트 */
+.draft-layout{display:grid;grid-template-columns:320px 1fr;gap:20px;align-items:start}
+.pool{position:sticky;top:20px;max-height:calc(100vh - 40px);overflow-y:auto}
+.tier-group-label{font-size:12px;font-weight:800;color:var(--text-muted);margin:14px 0 8px;display:flex;align-items:center;gap:6px}
+.teams-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.team-card{background:var(--bg-panel);border:1px solid var(--border-color);border-radius:12px;padding:14px;min-height:150px;display:flex;flex-direction:column;gap:10px;cursor:default}
+.team-head{display:flex;justify-content:space-between;align-items:center;font-weight:800}
+.team-cost{font-size:12px;color:var(--accent);font-weight:700}
+.team-members{display:flex;flex-direction:column;gap:6px}
+.team-members .chip{width:100%;border-radius:8px}
+
+/* 8. 점수판 */
+.score-layout{display:grid;grid-template-columns:minmax(300px,0.8fr) 1.2fr;gap:20px;align-items:start}
+.score-input{width:64px;text-align:center;padding:6px}
+.cp-toggle{display:flex;align-items:center;gap:8px;padding:6px 12px;border:1px solid var(--border-color);border-radius:7px;background:var(--bg-panel);font-size:14px;font-weight:600}
+.cp-toggle input[type=number]{width:70px;padding:5px 8px}
+tr.cp-reached td{background:rgba(255,71,87,.08)}
+.team-name-input{min-width:110px;font-weight:700}
+
+/* 9. 우승 기록 */
+.fame-layout{display:grid;grid-template-columns:1.4fr 1fr;gap:20px;align-items:start}
+.record{border:1px solid var(--border-color);border-radius:10px;margin-bottom:10px;background:var(--bg-details);overflow:hidden}
+.record-head{display:flex;gap:14px;align-items:center;padding:14px 16px;cursor:pointer}
+.record-head:hover{background:var(--bg-hover)}
+.record-head .crown{font-size:22px;color:#f1c40f}
+.record-head .grow{flex:1;min-width:0}
+.record-title{font-weight:800}
+.record-meta{font-size:12px;color:var(--text-muted);margin-top:3px}
+.record-score{font-weight:800;color:var(--accent);font-size:18px;white-space:nowrap}
+.record-detail{border-top:1px solid var(--border-color);padding:6px 10px 10px;background:var(--bg-panel)}
+.pager{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:14px}
+.editor-table td{padding:6px;border-bottom:1px solid var(--border-color)}
+.editor-table .rank-label{font-weight:800;white-space:nowrap;width:46px;text-align:center}
+.helper-chips{display:flex;flex-wrap:wrap;gap:6px;max-height:120px;overflow-y:auto;padding:10px;border:1px dashed var(--border-color);border-radius:8px;margin-top:8px}
+.helper-chips button{border:1px solid var(--border-color);background:var(--bg-hover);color:var(--text-main);border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer}
+.helper-chips button:hover{border-color:var(--accent);color:var(--accent)}
+
+/* 10. 개인 기록 */
+.profile-layout{display:grid;grid-template-columns:1.3fr 1fr;gap:20px;align-items:start}
+.profile-detail{position:sticky;top:20px}
+.profile-top{display:flex;gap:16px;align-items:center;margin-bottom:18px}
+.profile-name{font-size:24px;font-weight:800}
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+.stat-box{background:var(--bg-details);border:1px solid var(--border-color);border-radius:10px;padding:12px;text-align:center}
+.stat-box .label{font-size:12px;color:var(--text-muted);font-weight:600}
+.stat-box .value{font-size:20px;font-weight:800;margin-top:4px}
+.admin-box{border:1px solid rgba(46,213,115,.35);background:rgba(46,213,115,.05);border-radius:10px;padding:14px;margin-bottom:18px}
+.admin-box .title{font-size:13px;font-weight:800;color:var(--success);margin-bottom:10px;display:flex;gap:6px;align-items:center}
+.match-row{display:flex;gap:12px;align-items:center;padding:9px 0;border-bottom:1px solid var(--border-color);font-size:14px}
+.match-row:last-child{border-bottom:0}
+.match-rank{width:44px;text-align:center;font-weight:800;padding:3px 0;border-radius:6px;background:var(--bg-hover)}
+
+/* 11. 리더보드 카드 */
+.sort-group{display:flex;background:var(--bg-panel);border-radius:8px;padding:4px;border:1px solid var(--border-color)}
+.sort-btn{background:transparent;border:0;color:var(--text-muted);padding:6px 12px;cursor:pointer;border-radius:6px;font-weight:600;font-size:14px}
+.sort-btn.active{background:var(--accent);color:#111}
+.lb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:16px}
+.tier-divider{grid-column:1/-1;display:flex;align-items:center;gap:8px;margin-top:18px;color:var(--accent);font-weight:800;font-size:18px}
+.tier-divider::after{content:'';flex:1;height:1px;background:var(--border-color);margin-left:8px}
+.lb-card{position:relative;background:var(--bg-panel);border:1px solid var(--border-color);border-radius:14px;padding:22px 16px 16px;text-align:center;cursor:pointer;transition:.2s;display:flex;flex-direction:column;align-items:center;gap:10px}
+.lb-card:hover{transform:translateY(-3px);border-color:var(--accent);box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.lb-card .tier-badge{position:absolute;top:12px;left:12px}
+.lb-card .edit{position:absolute;top:8px;right:8px}
+.lb-name{font-weight:800;font-size:17px}
+.lb-ingame{font-size:13px;color:var(--text-muted)}
+.lb-action{margin-top:4px;font-size:12px;font-weight:700;color:var(--accent);display:flex;gap:6px;align-items:center}
+
+/* 12. 티어표 */
+.tier-board{display:flex;flex-direction:column;gap:8px}
+.tier-row{display:flex;border:1px solid var(--border-color);border-radius:10px;overflow:hidden;background:var(--bg-panel);min-height:58px}
+.tier-label{width:110px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:900;font-size:20px;gap:2px}
+.tier-label small{font-size:11px;font-weight:700;opacity:.8}
+.tier-drop{flex:1;padding:10px;display:flex;flex-wrap:wrap;gap:8px;align-content:center}
+.photo-picker{display:flex;gap:12px;align-items:center;padding:8px 10px;border:1px dashed var(--border-color);border-radius:8px;background:var(--bg-input)}
+.photo-picker .pp-preview{display:inline-flex}
+.delete-zone{border:2px dashed var(--danger);color:var(--danger);border-radius:10px;padding:18px;text-align:center;font-weight:700;margin-top:6px}
+.delete-zone.drag-over{background:rgba(255,71,87,.12)}
+
+/* 13. 모달 & 토스트 */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;animation:fade .15s}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.modal{background:var(--bg-panel);border:1px solid var(--border-color);border-radius:14px;width:100%;max-width:460px;max-height:90vh;display:flex;flex-direction:column}
+.modal.wide{max-width:860px}
+.modal-head{display:flex;justify-content:space-between;align-items:center;padding:18px 22px;border-bottom:1px solid var(--border-color)}
+.modal-head h3{font-size:18px}
+.modal-body{padding:20px 22px;overflow-y:auto;display:flex;flex-direction:column;gap:14px}
+.modal-foot{padding:14px 22px;border-top:1px solid var(--border-color);display:flex;justify-content:flex-end;gap:8px}
+.modal-foot .spacer{flex:1}
+.toast-wrap{position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column;gap:8px;z-index:2000}
+.toast{background:var(--bg-panel);border:1px solid var(--border-color);border-left:4px solid var(--success);padding:12px 16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.25);font-size:14px;font-weight:600;animation:fade .2s;max-width:340px}
+.toast.error{border-left-color:var(--danger)}
+.notice{font-size:12px;color:var(--text-muted);background:var(--bg-details);border:1px solid var(--border-color);border-radius:8px;padding:10px 12px;line-height:1.6}
+
+/* 14. 반응형 (화면이 좁을 때) */
+@media (max-width:1100px){
+  .bento{grid-template-columns:1fr 1fr}
+  .score-layout,.fame-layout,.profile-layout,.draft-layout,.settings-layout{grid-template-columns:1fr}
+  .pool,.profile-detail{position:static;max-height:none}
+}
+@media (max-width:760px){
+  .app{flex-direction:column}
+  .sidebar{width:100%;height:auto;position:relative;padding:14px}
+  .brand{margin-bottom:10px;padding-bottom:10px;font-size:20px}
+  .menu{flex-direction:row;overflow-x:auto;gap:4px}
+  .menu-item{white-space:nowrap;padding:9px 12px;border-left:0;border-bottom:3px solid transparent;font-size:14px}
+  .menu-item.active{border-bottom-color:var(--accent)}
+  .sidebar-bottom{flex-direction:row;flex-wrap:wrap;margin-top:8px;padding-top:8px}
+  .sidebar-bottom .menu-item{width:auto}
+  .sidebar-footer{display:none}
+  .content{padding:20px 16px 40px}
+  .bento,.two-col{grid-template-columns:1fr}
+  .stat-grid{grid-template-columns:repeat(2,1fr)}
+  .tier-label{width:72px;font-size:16px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar">
+    <div class="brand"><i class="fa-solid fa-infinity"></i> <span id="brandName">이터리</span><small>SCRIM MANAGER</small></div>
+    <ul class="menu" id="menu"></ul>
+    <div class="sidebar-bottom" id="sidebarBottom"></div>
+    <div class="sidebar-footer"><p>Designed for Eternal Return</p></div>
+  </nav>
+  <main class="content" id="page"></main>
+</div>
+<div id="modalRoot"></div>
+<div class="toast-wrap" id="toastWrap"></div>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+
+<script>
+'use strict';
+/* =====================================================================
+   [설정] Supabase 연결
+   - 데이터와 계정은 모두 Supabase(온라인 데이터베이스)에 저장됩니다.
+   - SUPABASE_KEY 는 "공개용(publishable) 키"라서 사이트에 넣어도 됩니다.
+     실제 보호는 서버의 보안 규칙(RLS)과 권한 검사 함수가 합니다.
+   - 계정·비밀번호는 서버에만 있습니다 (사이트 파일에는 없음).
+   ===================================================================== */
+const CONFIG = {
+  SITE_NAME: '이터리',
+  SUPABASE_URL: 'https://kwiuoxvdzmhyrxtwlned.supabase.co',
+  SUPABASE_KEY: 'sb_publishable_58kSGjnLsEuwvzDaokNQ8g_GIZBRPsj',
+  POLL_MS: 8000,   // 다른 사람이 바꾼 내용을 확인하는 주기 (8초)
+};
+
+/* ---------- 티어 정의 (이름, 코스트, 색) ---------- */
+const TIERS = [
+  { k:'S', cost:6, color:'#ff4757', fg:'#fff' },
+  { k:'A', cost:5, color:'#ffa502', fg:'#111' },
+  { k:'B', cost:4, color:'#eccc68', fg:'#111' },
+  { k:'C', cost:3, color:'#2ed573', fg:'#111' },
+  { k:'D', cost:2, color:'#1e90ff', fg:'#fff' },
+  { k:'F', cost:1, color:'#a4b0be', fg:'#111' },
+];
+// 예전 티어(SSS·SS·닭·나뭇가지)로 저장된 선수는 가장 가까운 티어로 옮깁니다.
+const OLD_TIER_MAP = { 'SSS':'S', 'SS':'S', '닭':'F', '나뭇가지':'F' };
+const tierInfo  = k => TIERS.find(t => t.k === k) || null;
+const costOf    = p => (tierInfo(p.tier)?.cost ?? 0);
+const tierIndex = k => { const i = TIERS.findIndex(t => t.k === k); return i < 0 ? 99 : i; };
+
+/* =====================================================================
+   데이터 (Supabase의 app_state 표 한 줄에 통째로 저장)
+   db.players : 선수 목록      db.records : 우승 기록(1~8등)
+   db.draft   : 드래프트 설정  db.score   : 진행 중인 경기 점수판
+   선수 사진은 용량이 커서 photos 표에 따로 저장합니다.
+   ===================================================================== */
+function defaultDB(){
+  return { players:[], records:[], draft:{ teamCount:8 },
+           score:{ teams:[], rounds:3, scores:{}, cpOn:false, cpTarget:50, startedAt:null } };
+}
+// photoSink 를 주면 예전 데이터에 들어 있던 사진(p.image)을 꺼내 담습니다.
+function normalizeDB(d, photoSink){
+  const base = defaultDB();
+  const out = { ...base, ...d, draft:{...base.draft, ...(d.draft||{})}, score:{...base.score, ...(d.score||{})} };
+  out.players = Array.isArray(out.players) ? out.players : [];
+  out.records = Array.isArray(out.records) ? out.records : [];
+  delete out.photos;
+  out.players.forEach(p => {
+    if(p.tier && !TIERS.some(t => t.k === p.tier)) p.tier = OLD_TIER_MAP[p.tier] || null;
+    if('image' in p){
+      if(photoSink && typeof p.image === 'string' && p.image.startsWith('data:image/')) photoSink[p.id] = p.image;
+      delete p.image;
+    }
+  });
+  return out;
+}
+let db = defaultDB();
+let photos = {};            // { 선수id: 사진 data URL }
+let stateVersion = -1;      // 서버 데이터 버전 (동시에 고치는 것을 막는 데 사용)
+let booted = false;
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+
+/* ---------- 유틸 함수 ---------- */
+// HTML 특수문자 이스케이프: 사용자가 입력한 글자가 코드로 실행되지 않게 막습니다.
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// http/https 주소만 허용 (javascript: 같은 위험한 링크 차단)
+function safeUrl(u){
+  if(!u) return null;
+  try{ const x = new URL(String(u).trim()); return (x.protocol==='http:'||x.protocol==='https:') ? x.href : null; }
+  catch{ return null; }
+}
+const $  = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const norm = s => String(s||'').trim().toLowerCase();
+const pad = n => String(n).padStart(2,'0');
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+const byTierName = (a,b) => tierIndex(a.tier) - tierIndex(b.tier) || a.name.localeCompare(b.name,'ko');
+const findPlayer = id => db.players.find(p => p.id === id);
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+/* =====================================================================
+   서버(Supabase) 통신
+   - 읽기: REST로 표를 바로 읽음 (누구나 가능)
+   - 쓰기: 서버 함수(RPC)만 호출 가능. 함수 안에서 로그인·권한을 검사합니다.
+   ===================================================================== */
+const API = {
+  async req(path, opts = {}){
+    const r = await fetch(CONFIG.SUPABASE_URL + path, { ...opts,
+      headers:{ apikey:CONFIG.SUPABASE_KEY, 'Content-Type':'application/json', ...(opts.headers || {}) } });
+    const text = await r.text();
+    let body = null; try{ body = text ? JSON.parse(text) : null; }catch{ body = text; }
+    if(!r.ok){ const code = (body && body.message) || ('HTTP_' + r.status); const e = new Error(code); e.code = code; throw e; }
+    return body;
+  },
+  rpc(fn, args){ return this.req('/rest/v1/rpc/' + fn, { method:'POST', body:JSON.stringify(args) }); },
+  get(table, query){ return this.req(`/rest/v1/${table}?${query}`); },
+};
+const ERR_MSG = {
+  INVALID_LOGIN:'아이디 또는 비밀번호가 올바르지 않습니다', AUTH_REQUIRED:'로그인이 만료되었습니다. 다시 로그인하세요',
+  FORBIDDEN:'이 계정에는 권한이 없습니다', WRONG_PASSWORD:'현재 비밀번호가 올바르지 않습니다',
+  BAD_LOGIN_ID:'아이디는 영문·숫자·_ 2~20자여야 합니다', LOGIN_TAKEN:'이미 사용 중인 아이디입니다',
+  SHORT_PASSWORD:'비밀번호는 8자 이상이어야 합니다', NO_LINKED_PLAYER:'이 계정에 연결된 멤버가 없습니다',
+  PLAYER_TAKEN:'그 멤버는 이미 다른 계정에 연결되어 있습니다', BAD_IMAGE:'사진 형식이 올바르지 않습니다',
+  BAD_ROLE:'권한 값이 올바르지 않습니다', NOT_FOUND:'계정을 찾을 수 없습니다',
+};
+const errText = e => ERR_MSG[e.code] || (/fetch/i.test(e.message) ? '서버에 연결할 수 없습니다' : '오류: ' + e.message);
+function handleErr(e){
+  if(e.code === 'AUTH_REQUIRED'){ setSession(null); route(); }
+  toast(errText(e), 'error');
+}
+
+/* ---------- 동기화 상태 표시 ---------- */
+let syncState = 'loading';
+const SYNC_LABEL = { loading:['fa-spinner fa-spin','불러오는 중'], saved:['fa-circle-check','실시간 연결됨'],
+  saving:['fa-arrows-rotate fa-spin','저장 중...'], error:['fa-triangle-exclamation','저장 실패'], offline:['fa-plug-circle-xmark','서버 연결 끊김'] };
+function setSync(s){
+  syncState = s;
+  const el = $('#syncStatus'); if(!el) return;
+  const [ic, label] = SYNC_LABEL[s];
+  el.className = 'sync-status ' + s; el.innerHTML = `<i class="fa-solid ${ic}"></i> ${label}`;
+}
+
+/* ---------- 데이터 읽기 / 저장 ---------- */
+async function loadState(){
+  const rows = await API.get('app_state', 'select=data,version&id=eq.1');
+  db = normalizeDB(rows[0].data || {}); stateVersion = rows[0].version;
+}
+async function loadPhotos(){
+  const rows = await API.get('photos', 'select=player_id,data');
+  photos = Object.fromEntries(rows.map(r => [r.player_id, r.data]));
+}
+// 관리자가 바꾼 내용을 서버에 저장 (연달아 바꾸면 0.35초 모아서 한 번에)
+let saveTimer = null, saving = false, dirty = false;
+function save(){
+  if(!isAdmin()) return;
+  dirty = true; setSync('saving');
+  clearTimeout(saveTimer); saveTimer = setTimeout(flushSave, 350);
+}
+async function flushSave(){
+  if(saving){ saveTimer = setTimeout(flushSave, 300); return; }
+  if(!dirty) return;
+  saving = true; dirty = false;
+  try{
+    stateVersion = await API.rpc('save_state', { p_token:session.token, p_data:db, p_version:stateVersion });
+    setSync(dirty ? 'saving' : 'saved');
+  }catch(e){
+    dirty = false; setSync('error');
+    if(e.code === 'VERSION_CONFLICT') toast('다른 관리자가 먼저 수정해서 최신 내용으로 다시 불러왔습니다. 방금 바꾼 내용을 다시 확인해 주세요', 'error');
+    else handleErr(e);
+    try{ await refreshState(true); setSync('saved'); }catch{}
+  }finally{ saving = false; }
+}
+async function savePhoto(pid, data){
+  await API.rpc('save_photo', { p_token:session.token, p_player_id:pid, p_data:data || null });
+  if(data) photos[pid] = data; else delete photos[pid];
+}
+// 다른 사람이 바꾼 내용 반영 (입력 중이면 입력이 끝난 뒤에)
+let pendingRemote = false;
+const typingInPage = () => { const a = document.activeElement; return !!(a && $('#page').contains(a) && /INPUT|SELECT|TEXTAREA/.test(a.tagName)); };
+async function refreshState(force){
+  await Promise.all([loadState(), loadPhotos()]);
+  if(!force && typingInPage()){ pendingRemote = true; return; }
+  pendingRemote = false; renderSidebar(); rerender();
+}
+async function pollState(){
+  if(!booted || saving || dirty || document.hidden) return;
+  try{
+    const rows = await API.get('app_state', 'select=version&id=eq.1');
+    if(rows[0].version !== stateVersion) await refreshState(false);
+    if(syncState !== 'saving') setSync('saved');
+  }catch{ setSync('offline'); }
+}
+setInterval(pollState, CONFIG.POLL_MS);
+window.addEventListener('focus', pollState);
+document.addEventListener('focusout', () => setTimeout(() => {
+  if(pendingRemote && !typingInPage()){ pendingRemote = false; renderSidebar(); rerender(); }
+}, 80));
+
+/* =====================================================================
+   로그인 상태 (서버가 준 토큰을 이 브라우저에 보관, 30일 유지)
+   account: { id, login_id, role, player_id }
+   ===================================================================== */
+const SESSION_KEY = 'iteri_session_v2';
+const ID_RULE = /^[A-Za-z0-9_]{2,20}$/;
+let session = (() => { try{ return JSON.parse(localStorage.getItem(SESSION_KEY)); }catch{ return null; } })();
+function setSession(s){
+  session = s;
+  try{ s ? localStorage.setItem(SESSION_KEY, JSON.stringify(s)) : localStorage.removeItem(SESSION_KEY); }catch{}
+}
+const currentAccount = () => session ? session.account : null;
+const linkedPlayer = acc => (acc && acc.player_id) ? findPlayer(acc.player_id) || null : null;
+/* 권한 3단계 (서버에서도 똑같이 검사합니다)
+   - master(마스터): 모든 기능 + 계정 관리(추가·삭제·권한 변경·일반 계정과 멤버 연결)
+   - admin(관리자):  출/퇴근 · 드래프트 · 점수판 · 선수/기록 편집, 본인 아이디·비밀번호 관리
+   - member(일반):   연결된 본인 멤버의 출/퇴근만, 본인 아이디·비밀번호 관리 */
+const ROLES = {
+  master: { label:'마스터', icon:'fa-crown' },
+  admin:  { label:'관리자', icon:'fa-shield-halved' },
+  member: { label:'일반',   icon:'fa-user' },
+};
+const isLoggedIn = () => !!currentAccount();
+const isAdmin    = () => ['master','admin'].includes(currentAccount()?.role);
+const isMaster   = () => currentAccount()?.role === 'master';
+const roleBadge = role => role === 'master'
+  ? `<span class="tier-badge" style="background:var(--accent);color:#111"><i class="fa-solid fa-crown"></i>&nbsp;마스터</span>`
+  : role === 'admin' ? `<span class="tier-badge" style="background:rgba(46,213,115,.15);color:var(--success)">관리자</span>`
+  : `<span class="tier-badge unranked">일반</span>`;
+
+/* ---------- 로그인 ---------- */
+let loginFails = 0, lockUntil = 0;
+function openLogin(){
+  const m = openModal({
+    title:'<i class="fa-solid fa-lock"></i> 로그인',
+    body:`<label class="field">아이디<input class="input" id="lgId" type="text" autocomplete="username" autocapitalize="off" spellcheck="false"></label>
+          <label class="field">비밀번호<input class="input" id="lgPw" type="password" autocomplete="current-password"></label>
+          <p class="small" id="lgMsg" style="color:var(--danger);min-height:16px"></p>`,
+    footer:`<button class="btn" data-x>취소</button><button class="btn btn-primary" id="lgGo"><i class="fa-solid fa-right-to-bracket"></i> 로그인</button>`
+  });
+  $('[data-x]', m).onclick = closeModal;
+  const go = async () => {
+    const msg = $('#lgMsg', m), btn = $('#lgGo', m);
+    if(btn.disabled) return;
+    if(Date.now() < lockUntil){ msg.textContent = `잠시 후 다시 시도하세요 (${Math.ceil((lockUntil-Date.now())/1000)}초)`; return; }
+    const id = $('#lgId', m).value.trim(), pw = $('#lgPw', m).value;
+    if(!id || !pw){ msg.textContent = '아이디와 비밀번호를 입력하세요.'; return; }
+    btn.disabled = true; msg.textContent = '';
+    try{
+      const res = await API.rpc('login', { p_login:id, p_password:pw });
+      setSession({ token:res.token, account:res.account }); loginFails = 0;
+      closeModal(); toast(`${ROLES[res.account.role].label} 계정(${res.account.login_id})으로 로그인했습니다`); route();
+    }catch(e){
+      if(e.code === 'INVALID_LOGIN'){ loginFails++; if(loginFails >= 5){ lockUntil = Date.now() + 30000; loginFails = 0; } }
+      msg.textContent = errText(e) + '.';
+    }finally{ btn.disabled = false; }
+  };
+  $('#lgGo', m).onclick = go;
+  $$('input', m).forEach(i => i.addEventListener('keydown', e => { if(e.key === 'Enter') go(); }));
+  $('#lgId', m).focus();
+}
+function logout(){
+  if(session) API.rpc('logout', { p_token:session.token }).catch(() => {});
+  setSession(null);
+  if(PAGES.find(p => p.id === current)?.need) history.replaceState(null, '', '#dashboard');
+  toast('로그아웃했습니다'); route();
+}
+
+/* ---------- 테마 ---------- */
+const THEMES = [
+  { id:'dark',  label:'다크 모드',  icon:'fa-moon' },
+  { id:'light', label:'화이트 모드', icon:'fa-sun' },
+  { id:'beige', label:'베이지 모드', icon:'fa-mug-hot' },
+];
+let theme = localStorage.getItem('irido_theme') || 'dark';
+function applyTheme(){
+  document.body.classList.remove('light-mode','beige-mode');
+  if(theme !== 'dark') document.body.classList.add(theme + '-mode');
+}
+function cycleTheme(){
+  const i = THEMES.findIndex(t => t.id === theme);
+  theme = THEMES[(i+1) % THEMES.length].id;
+  localStorage.setItem('irido_theme', theme); applyTheme(); renderSidebar();
+}
+
+/* ---------- 모달 / 토스트 ---------- */
+function openModal({ title, body, footer, wide }){
+  const root = $('#modalRoot');
+  root.innerHTML = `<div class="modal-backdrop"><div class="modal ${wide?'wide':''}" role="dialog">
+      <div class="modal-head"><h3>${title}</h3><button class="icon-btn" data-close><i class="fa-solid fa-xmark"></i></button></div>
+      <div class="modal-body">${body}</div>${footer ? `<div class="modal-foot">${footer}</div>` : ''}</div></div>`;
+  $('[data-close]', root).onclick = closeModal;
+  $('.modal-backdrop', root).addEventListener('mousedown', e => { if(e.target.classList.contains('modal-backdrop')) closeModal(); });
+  return $('.modal', root);
+}
+function closeModal(){ $('#modalRoot').innerHTML = ''; }
+document.addEventListener('keydown', e => { if(e.key === 'Escape') closeModal(); });
+function confirmDialog(msg, onOk, { okLabel='확인', danger=false } = {}){
+  const m = openModal({ title:'확인', body:`<p style="line-height:1.6">${esc(msg)}</p>`,
+    footer:`<button class="btn" data-x>취소</button><button class="btn ${danger?'btn-danger':'btn-primary'}" data-ok>${esc(okLabel)}</button>` });
+  $('[data-x]', m).onclick = closeModal;
+  $('[data-ok]', m).onclick = () => { closeModal(); onOk(); };
+}
+function toast(msg, type='ok'){
+  const t = document.createElement('div');
+  t.className = 'toast' + (type === 'error' ? ' error' : '');
+  t.textContent = msg; $('#toastWrap').appendChild(t);
+  setTimeout(() => t.remove(), 2600);
+}
+
+/* ---------- 작은 화면 조각들 ---------- */
+function tierBadge(k){
+  const t = tierInfo(k);
+  if(!t) return `<span class="tier-badge unranked">Unranked</span>`;
+  return `<span class="tier-badge" style="background:${t.color};color:${t.fg}">${esc(t.k)}</span>`;
+}
+/* ---------- 프로필 사진 (파일 업로드) ----------
+   업로드한 사진은 256×256 정사각형으로 줄인 뒤 "data URL"(그림을 글자로 바꾼 것) 형태로
+   Supabase의 photos 표에 저장합니다. */
+const PHOTO_SIZE = 256;
+function imageSrc(v){
+  if(typeof v === 'string' && /^data:image\/(png|jpeg|webp|gif);base64,/.test(v)) return v;
+  return safeUrl(v);   // 예전에 URL로 넣은 사진도 계속 보이게
+}
+function readImageFile(file){
+  return new Promise((resolve, reject) => {
+    if(!file.type.startsWith('image/')) return reject(new Error('이미지 파일만 올릴 수 있습니다'));
+    if(file.size > 15 * 1024 * 1024) return reject(new Error('15MB 이하의 사진을 올려주세요'));
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const side = Math.min(img.width, img.height);               // 가운데를 정사각형으로 자르기
+      const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+      const c = document.createElement('canvas'); c.width = c.height = PHOTO_SIZE;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, 0, PHOTO_SIZE, PHOTO_SIZE);  // 투명 배경 대비
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, PHOTO_SIZE, PHOTO_SIZE);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('사진을 읽을 수 없습니다')); };
+    img.src = url;
+  });
+}
+// 사진 선택 칸 HTML
+const photoPickerHtml = (id, name) => `
+  <div class="photo-picker" id="${id}">
+    <span class="pp-preview">${avatar({ name:name||'?' }, 56)}</span>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <div class="toolbar"><label class="btn btn-sm"><i class="fa-solid fa-image"></i> 사진 선택<input type="file" accept="image/*" hidden></label>
+        <button type="button" class="btn btn-sm" data-pp-clear>사진 지우기</button></div>
+      <span class="small muted" data-pp-msg>JPG·PNG·WEBP · 자동으로 작게 줄여 저장합니다</span>
+    </div>
+  </div>`;
+// 사진 선택 칸 동작 연결. 반환값의 .value 에 현재 사진이 들어 있습니다.
+function bindPhotoPicker(root, id, initial, getName){
+  const box = $('#' + id, root), state = { value: initial || '', busy:false };
+  const paint = () => { $('.pp-preview', box).innerHTML = avatar({ name:getName() || '?', image:state.value }, 56); };
+  paint();
+  $('input[type=file]', box).addEventListener('change', async e => {
+    const f = e.target.files[0]; e.target.value = '';
+    if(!f) return;
+    state.busy = true; $('[data-pp-msg]', box).textContent = '사진 처리 중...';
+    try{ state.value = await readImageFile(f); paint(); $('[data-pp-msg]', box).textContent = `${f.name} 선택됨`; }
+    catch(err){ toast(err.message, 'error'); $('[data-pp-msg]', box).textContent = 'JPG·PNG·WEBP · 자동으로 작게 줄여 저장합니다'; }
+    state.busy = false;
+  });
+  $('[data-pp-clear]', box).onclick = () => { state.value = ''; paint(); $('[data-pp-msg]', box).textContent = '사진 없음'; };
+  return state;
+}
+
+function avatar(p, size=36){
+  const u = imageSrc('image' in p ? p.image : photos[p.id]), st = `width:${size}px;height:${size}px;font-size:${Math.round(size*.42)}px`;
+  return u ? `<img class="avatar" style="${st}" src="${esc(u)}" alt="" onerror="this.style.visibility='hidden'">`
+           : `<span class="avatar" style="${st}">${esc((p.name||'?').slice(0,1))}</span>`;
+}
+function chip(p, { draggable=false, showCost=true } = {}){
+  return `<span class="chip" data-pid="${esc(p.id)}" ${draggable?'draggable="true"':''}>${avatar(p,24)}${esc(p.name)}${showCost?` <span class="cost">${costOf(p)}코</span>`:''}</span>`;
+}
+function recordUrl(p){
+  return safeUrl(p.link) || `https://dak.gg/er/players/${encodeURIComponent(p.ingame || p.name)}`;
+}
+function emptyBox(icon, text){ return `<div class="empty"><i class="fa-solid ${icon}"></i>${text}</div>`; }
+
+/* =====================================================================
+   전적 계산
+   - 우승 기록(db.records)에 등장한 횟수 = 게임 수, 1등 = 우승
+   - 관리자가 개인 기록에서 직접 더한 값(bonusWins, bonusGames)을 합산
+   ===================================================================== */
+function memberMatches(m, p){
+  if(m.pid) return m.pid === p.id;
+  const n = norm(m.name);
+  return !!n && (n === norm(p.name) || n === norm(p.ingame));
+}
+const memberName = m => (m.pid && findPlayer(m.pid)?.name) || m.name;
+function playerStats(p){
+  let games = 0, wins = 0, sum = 0; const hist = [];
+  for(const r of db.records){
+    const e = r.ranks.find(e => (e.members||[]).some(m => memberMatches(m, p)));
+    if(!e) continue;
+    games++; sum += e.rank; if(e.rank === 1) wins++;
+    hist.push({ date:r.date, title:r.title, rank:e.rank, team:e.team, score:e.score, created:r.createdAt||0 });
+  }
+  const bw = p.bonusWins || 0, bg = p.bonusGames || 0;
+  const totalGames = games + bg, totalWins = wins + bw;
+  return {
+    games: totalGames, wins: totalWins,
+    rate: totalGames ? Math.min(100, totalWins / totalGames * 100) : 0,
+    avg: games ? sum / games : null,         // 평균 순위는 실제 대회 기록만으로 계산
+    recordGames: games, recordWins: wins,
+    hist: hist.sort((a,b) => (b.date||'').localeCompare(a.date||'') || b.created - a.created),
+  };
+}
+// 이름 → 선수 연결 (쉼표로 구분된 멤버 문자열을 해석)
+function resolveMembers(text){
+  return String(text||'').split(/[,，\n]/).map(s => s.trim()).filter(Boolean).map(name => {
+    const p = db.players.find(p => norm(p.name) === norm(name) || (p.ingame && norm(p.ingame) === norm(name)));
+    return p ? { pid:p.id, name:p.name } : { pid:null, name };
+  });
+}
+const sortedRecords = () => [...db.records].sort((a,b) => (b.date||'').localeCompare(a.date||'') || (b.createdAt||0) - (a.createdAt||0));
+
+/* ---------- 점수판 계산 ---------- */
+function teamTotal(t){
+  let s = 0;
+  for(let r=1; r<=db.score.rounds; r++) s += Number(db.score.scores[t.id + '-' + r]) || 0;
+  return Math.round(s * 100) / 100;
+}
+const scoreRanking = () => db.score.teams.map(t => ({ ...t, total:teamTotal(t) })).sort((a,b) => b.total - a.total || a.id - b.id);
+
+/* =====================================================================
+   페이지 목록 & 라우팅 (주소 뒤의 #이름 으로 페이지 전환)
+   need:'login' → 로그인한 계정(일반 포함) / need:'admin' → 관리자·마스터만
+   ===================================================================== */
+const PAGES = [
+  { id:'dashboard',   label:'대시보드',     icon:'fa-house',            render:renderDashboard },
+  { id:'attendance',  label:'출/퇴근 관리', icon:'fa-clipboard-check',  render:renderAttendance, need:'login' },
+  { id:'draft',       label:'팀 드래프트',  icon:'fa-people-group',     render:renderDraft,      need:'admin' },
+  { id:'score',       label:'경기 점수판',  icon:'fa-trophy',           render:renderScore,      need:'admin' },
+  { id:'fame',        label:'우승 기록',    icon:'fa-crown',            render:renderFame },
+  { id:'profile',     label:'개인 기록',    icon:'fa-user-tag',         render:renderProfile },
+  { id:'leaderboard', label:'리더보드',     icon:'fa-users-viewfinder', render:renderLeaderboard },
+  { id:'tiers',       label:'선수 티어표',  icon:'fa-ranking-star',     render:renderTiers },
+  { id:'settings',    label:'관리자 설정',  icon:'fa-gear',             render:renderSettings,   need:'master' },
+];
+const canOpen = page => !page.need || ({ login:isLoggedIn, admin:isAdmin, master:isMaster }[page.need])();
+let current = 'dashboard';
+
+function renderSidebar(){
+  const acc = currentAccount(), admin = isAdmin();
+  $('#menu').innerHTML = PAGES.filter(canOpen).map(p =>
+    `<li><a href="#${p.id}" class="menu-item ${p.id===current?'active':''}"><i class="fa-solid ${p.icon}"></i> ${p.label}${p.need?'<i class="fa-solid fa-lock lock"></i>':''}</a></li>`).join('');
+  const th = THEMES.find(t => t.id === theme);
+  $('#sidebarBottom').innerHTML = `
+    ${acc ? `<div class="admin-pill"><i class="fa-solid ${ROLES[acc.role].icon}"></i><span>${ROLES[acc.role].label} · ${esc(acc.login_id)}</span></div>` : ''}
+    <div id="syncStatus" class="sync-status"></div>
+    ${installAvailable() ? `<button class="menu-item install-btn" id="sbInstall"><i class="fa-solid fa-mobile-screen-button"></i> 앱 설치</button>` : ''}
+    <button class="menu-item" id="sbTheme"><i class="fa-solid ${th.icon}"></i> ${th.label}</button>
+    ${admin ? `
+      <button class="menu-item" id="sbExport"><i class="fa-solid fa-download"></i> 데이터 내보내기</button>
+      <button class="menu-item" id="sbImport"><i class="fa-solid fa-upload"></i> 데이터 불러오기</button>` : ''}
+    ${acc && !isMaster() ? `<button class="menu-item" id="sbMe"><i class="fa-solid fa-id-card"></i> 내 계정</button>` : ''}
+    ${acc ? `<button class="menu-item" id="sbLogout" style="color:var(--danger)"><i class="fa-solid fa-right-from-bracket"></i> 로그아웃</button>`
+          : `<button class="menu-item" id="sbLogin" style="color:var(--success)"><i class="fa-solid fa-right-to-bracket"></i> 로그인</button>`}`;
+  $('#sbTheme').onclick = cycleTheme;
+  if($('#sbInstall')) $('#sbInstall').onclick = installApp;
+  if(admin){
+    $('#sbExport').onclick = exportData;
+    $('#sbImport').onclick = () => $('#importFile').click();
+  }
+  if(acc) $('#sbLogout').onclick = logout; else $('#sbLogin').onclick = openLogin;
+  if(acc && !isMaster()) $('#sbMe').onclick = openMyAccountModal;
+  setSync(syncState);
+}
+function route(){
+  if(!booted) return;
+  const id = location.hash.slice(1) || 'dashboard';
+  let page = PAGES.find(p => p.id === id) || PAGES[0];
+  if(!canOpen(page)){
+    page = PAGES[0];
+    history.replaceState(null, '', '#dashboard');
+    if(id !== 'dashboard') toast(isLoggedIn() ? '이 계정으로는 열 수 없는 메뉴입니다' : '로그인이 필요한 메뉴입니다', 'error');
+  }
+  current = page.id; renderSidebar();
+  page.render($('#page')); window.scrollTo(0, 0);
+}
+const rerender = () => PAGES.find(p => p.id === current).render($('#page'));
+window.addEventListener('hashchange', route);
+
+/* ---------- 데이터 백업 (사진 포함) ---------- */
+function exportData(){
+  const blob = new Blob([JSON.stringify({ ...db, photos }, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = `iteri-backup-${todayStr()}.json`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast('백업 파일을 내려받았습니다');
+}
+// 백업 파일이나 예전(브라우저 저장) 데이터를 서버에 올립니다. 현재 서버 데이터는 덮어씌워집니다.
+async function uploadData(d){
+  const sink = { ...(d.photos && typeof d.photos === 'object' ? d.photos : {}) };
+  db = normalizeDB(JSON.parse(JSON.stringify(d)), sink);
+  save(); rerender();
+  let n = 0;
+  for(const [pid, data] of Object.entries(sink)){
+    if(!db.players.some(p => p.id === pid) || typeof data !== 'string') continue;
+    try{ await savePhoto(pid, data); n++; }catch(e){ console.warn(e); }
+  }
+  rerender(); toast(`데이터를 올렸습니다${n ? ` (사진 ${n}장)` : ''}`);
+}
+$('#importFile').addEventListener('change', e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const d = JSON.parse(reader.result);
+      if(!Array.isArray(d.players) || !Array.isArray(d.records)) throw new Error('형식 오류');
+      confirmDialog(`선수 ${d.players.length}명, 기록 ${d.records.length}개를 서버에 올립니다. 지금 서버에 있는 데이터는 덮어씌워집니다.`,
+        () => uploadData(d), { okLabel:'불러오기', danger:true });
+    }catch(err){ toast('올바른 이터리 백업 파일이 아닙니다', 'error'); }
+  };
+  reader.readAsText(f);
+});
+
+/* ---------- 드래그 앤 드롭 공통 ---------- */
+// zones: [data-drop] 속성을 가진 영역. onDrop(pid, 영역의 data-drop 값)
+let dragPid = null;
+function bindDnD(root, onDrop){
+  $$('[draggable="true"]', root).forEach(el => {
+    el.addEventListener('dragstart', e => { dragPid = el.dataset.pid; el.classList.add('dragging'); e.dataTransfer.setData('text/plain', dragPid); e.dataTransfer.effectAllowed = 'move'; });
+    el.addEventListener('dragend', () => { el.classList.remove('dragging'); dragPid = null; });
+  });
+  $$('[data-drop]', root).forEach(z => {
+    z.addEventListener('dragover', e => { e.preventDefault(); z.classList.add('drag-over'); });
+    z.addEventListener('dragleave', e => { if(!z.contains(e.relatedTarget)) z.classList.remove('drag-over'); });
+    z.addEventListener('drop', e => {
+      e.preventDefault(); z.classList.remove('drag-over');
+      const pid = e.dataTransfer.getData('text/plain') || dragPid;
+      if(pid) onDrop(pid, z.dataset.drop);
+    });
+  });
+}
+
+/* =====================================================================
+   [페이지 1] 대시보드
+   ===================================================================== */
+function renderDashboard(el){
+  const all = db.players.map(p => ({ p, s:playerStats(p) }));
+  const byWins  = all.filter(x => x.s.wins > 0).sort((a,b) => b.s.wins - a.s.wins || b.s.rate - a.s.rate);
+  const byGames = all.filter(x => x.s.games > 0).sort((a,b) => b.s.games - a.s.games);
+  const byAvg   = all.filter(x => x.s.avg != null).sort((a,b) => a.s.avg - b.s.avg || b.s.recordGames - a.s.recordGames);
+  const last = sortedRecords()[0];
+  const d = new Date(), days = ['일','월','화','수','목','금','토'];
+
+  const stat = (icon, label, x, value) => `
+    <div class="card"><div class="card-header"><span class="left"><i class="fa-solid ${icon}"></i> ${label}</span></div>
+      ${x ? `<div class="stat-body">${avatar(x.p,52)}<div><div class="stat-name">${esc(x.p.name)}</div><div class="stat-value">${value(x)}</div></div></div>`
+          : `<p class="muted">기록 없음</p>`}</div>`;
+
+  const lastWinner = last ? (() => {
+    const w = last.ranks.find(e => e.rank === 1);
+    return `<div class="winner-team">${esc(w?.team || '-')}</div>
+      <div class="small muted" style="margin-bottom:10px">${esc(last.title)} · ${esc(last.date)}</div>
+      <div>${(w?.members||[]).map(m => `<span class="name-chip">${esc(memberName(m))}</span>`).join('') || '<span class="muted">멤버 정보 없음</span>'}</div>
+      ${w && w.score !== '' && w.score != null ? `<div class="stat-value" style="margin-top:10px">${esc(w.score)} PTS</div>` : ''}`;
+  })() : `<p class="muted">기록 없음</p>`;
+
+  el.innerHTML = `
+    <header class="page-header">
+      <div><h2 class="page-title">Dashboard</h2><p class="page-sub">${d.getFullYear()}.${pad(d.getMonth()+1)}.${pad(d.getDate())} (${days[d.getDay()]}) · 등록 선수 ${db.players.length}명 · 누적 대회 ${db.records.length}회</p></div>
+    </header>
+    <div class="bento">
+      ${stat('fa-trophy','최다 우승', byWins[0], x => `${x.s.wins}회 우승`)}
+      ${stat('fa-fire','최다 출전', byGames[0], x => `${x.s.games}게임 출전`)}
+      ${stat('fa-star','평균 순위', byAvg[0], x => `평균 ${x.s.avg.toFixed(2)}위`)}
+      <div class="card winner-card"><div class="card-header"><span class="left"><i class="fa-solid fa-crown"></i> Last Winner</span></div>${lastWinner}</div>
+      <div class="card"><div class="card-header"><span class="left"><i class="fa-solid fa-medal"></i> Top 3 Leaders</span></div>
+        ${byWins.length ? byWins.slice(0,3).map((x,i) => `<div class="podium-row"><span class="podium-rank rank-${i+1}">${i+1}</span>${avatar(x.p,32)}<b style="flex:1">${esc(x.p.name)}</b><span class="stat-value" style="margin:0">${x.s.wins}승</span></div>`).join('')
+          : `<p class="muted">기록 없음</p>`}
+      </div>
+      <div class="card"><div class="card-header"><span class="left"><i class="fa-solid fa-chart-simple"></i> 티어 분포</span><span class="small muted">${db.players.length}명</span></div>
+        ${db.players.length ? (() => {
+          const rows = [...TIERS.map(t => ({ t, n:db.players.filter(p => p.tier === t.k).length })),
+                        { t:null, n:db.players.filter(p => !tierInfo(p.tier)).length }];
+          const max = Math.max(1, ...rows.map(r => r.n));
+          return rows.map(r => `<div class="dist-row">${tierBadge(r.t?.k)}
+            <div class="dist-bar"><span style="width:${r.n/max*100}%;background:${r.t ? r.t.color : 'var(--text-muted)'}"></span></div>
+            <b class="num">${r.n}</b></div>`).join('');
+        })() : `<p class="muted">등록된 선수가 없습니다</p>`}
+      </div>
+    </div>`;
+}
+
+/* =====================================================================
+   [페이지 2] 출/퇴근 관리 (관리자)
+   ===================================================================== */
+function renderAttendance(el){
+  const admin = isAdmin(), acc = currentAccount(), mine = admin ? null : linkedPlayer(acc);
+  const canToggle = p => admin || (mine && p.id === mine.id);
+  const present = db.players.filter(p => p.present).sort(byTierName);
+  const absent  = db.players.filter(p => !p.present).sort(byTierName);
+  const item = p => `<div class="att-item ${canToggle(p)?'':'locked'} ${mine && p.id===mine.id?'mine':''}" data-pid="${esc(p.id)}">${avatar(p,32)}<span class="grow">${esc(p.name)}${mine && p.id===mine.id?' <span class="small" style="color:var(--accent)">(나)</span>':''}</span>${tierBadge(p.tier)}
+      ${canToggle(p) ? `<i class="fa-solid ${p.present?'fa-arrow-right':'fa-arrow-left'} muted"></i>` : ''}</div>`;
+  // 일반 계정: 맨 위에 "내 출퇴근" 카드
+  const myCard = admin ? '' : mine ? `
+    <div class="card my-att" style="margin-bottom:20px">
+      ${avatar(mine,56)}
+      <div style="flex:1"><div class="stat-name">${esc(mine.name)}</div>
+        <div class="stat-value">${mine.present ? '✅ 출근 (참여 중)' : '❌ 퇴근 (미참여)'}</div></div>
+      <button class="btn ${mine.present?'btn-danger':'btn-primary'}" id="attMine">
+        <i class="fa-solid ${mine.present?'fa-right-from-bracket':'fa-right-to-bracket'}"></i> ${mine.present?'퇴근하기':'출근하기'}</button>
+    </div>` : `<div class="card" style="margin-bottom:20px">${emptyBox('fa-link-slash','이 계정에 연결된 멤버가 없습니다.<br>마스터에게 계정과 멤버 연결을 요청하세요.')}</div>`;
+  el.innerHTML = `
+    <header class="page-header">
+      <div><h2 class="page-title">출/퇴근 관리</h2>
+        <p class="page-sub summary">전체: <b>${db.players.length}</b>명 · 출근: <b>${present.length}</b>명 · 퇴근: <b>${absent.length}</b>명 &nbsp;${admin ? '(선수를 클릭하면 상태가 바뀝니다)' : '(본인 상태만 바꿀 수 있습니다)'}</p></div>
+      ${admin ? `<div class="toolbar"><button class="btn" id="attAllIn"><i class="fa-solid fa-user-check"></i> 전체 출근</button>
+        <button class="btn" id="attAllOut"><i class="fa-solid fa-user-xmark"></i> 전체 퇴근</button></div>` : ''}
+    </header>
+    ${myCard}
+    ${db.players.length === 0 ? `<div class="card">${emptyBox('fa-user-plus','등록된 선수가 없습니다.' + (admin ? '<br>선수 티어표에서 먼저 선수를 등록하세요.' : ''))}</div>` : `
+    <div class="two-col">
+      <div class="card"><h3 class="section">✅ 출근 (참여 중)</h3><div class="att-list">${present.map(item).join('') || emptyBox('fa-mug-hot','출근한 선수가 없습니다')}</div></div>
+      <div class="card"><h3 class="section">❌ 퇴근 (미참여)</h3><div class="att-list">${absent.map(item).join('') || emptyBox('fa-check','모두 출근했습니다')}</div></div>
+    </div>`}`;
+  const toggle = async p => {
+    const want = !p.present;
+    if(admin){ p.present = want; if(!want) p.team = null; save(); rerender(); }
+    else{   // 일반 계정은 서버 함수로 본인 것만
+      try{ setSync('saving'); await API.rpc('set_my_attendance', { p_token:session.token, p_present:want }); await refreshState(true); setSync('saved'); }
+      catch(e){ setSync('error'); return handleErr(e); }
+    }
+    toast(`${p.name} ${want?'출근':'퇴근'}`);
+  };
+  $$('.att-item', el).forEach(it => it.onclick = () => {
+    const p = findPlayer(it.dataset.pid);
+    if(p && canToggle(p)) toggle(p);
+  });
+  if(mine) $('#attMine').onclick = () => toggle(mine);
+  if(!admin) return;
+  $('#attAllIn').onclick  = () => { db.players.forEach(p => p.present = true); save(); rerender(); };
+  $('#attAllOut').onclick = () => { db.players.forEach(p => { p.present = false; p.team = null; }); save(); rerender(); };
+}
+
+/* =====================================================================
+   [페이지 3] 팀 드래프트 (관리자)
+   - 드래그 앤 드롭 또는 "선수 클릭 → 팀 클릭"으로 배치
+   - 자동 배정: 코스트 높은 선수부터, 인원이 적고 코스트 합이 낮은 팀에 배치(그리디)
+   ===================================================================== */
+let draftSel = null;
+function renderDraft(el){
+  const tc = db.draft.teamCount;
+  const present = db.players.filter(p => p.present);
+  present.forEach(p => { if(p.team != null && (p.team < 1 || p.team > tc)) p.team = null; });
+  const pool = present.filter(p => p.team == null).sort(byTierName);
+  const groups = [...TIERS.map(t => ({ k:t.k, label:`${t.k} (${t.cost}코)` })), { k:null, label:'Unranked (0코)' }]
+    .map(g => ({ ...g, list: pool.filter(p => (tierInfo(p.tier)?.k ?? null) === g.k) })).filter(g => g.list.length);
+
+  let teamsHtml = '';
+  for(let i=1; i<=tc; i++){
+    const ms = present.filter(p => p.team === i).sort((a,b) => costOf(b) - costOf(a));
+    teamsHtml += `<div class="team-card dropzone" data-drop="${i}">
+      <div class="team-head"><span>${i}팀 <span class="muted small">${ms.length}명</span></span><span class="team-cost">코스트 ${ms.reduce((s,p)=>s+costOf(p),0)}</span></div>
+      <div class="team-members">${ms.map(p => chip(p,{draggable:true})).join('') || '<span class="muted small">여기에 선수를 놓으세요</span>'}</div></div>`;
+  }
+  el.innerHTML = `
+    <header class="page-header">
+      <div><h2 class="page-title">팀 드래프트</h2><p class="page-sub">출근한 선수 ${present.length}명 · 팀 ${tc}개 · 선수를 드래그하거나, 선수를 누른 뒤 팀을 누르세요</p></div>
+      <div class="toolbar">
+        <button class="btn" id="drAdd"><i class="fa-solid fa-plus"></i> 팀 추가</button>
+        <button class="btn" id="drDel"><i class="fa-solid fa-minus"></i> 팀 삭제</button>
+        <button class="btn" id="drAuto"><i class="fa-solid fa-shuffle"></i> 자동 배정</button>
+        <button class="btn btn-primary" id="drConfirm"><i class="fa-solid fa-check"></i> 팀 확정</button>
+        <button class="btn" id="drCopy"><i class="fa-regular fa-copy"></i> 텍스트 복사</button>
+        <button class="btn btn-danger" id="drReset"><i class="fa-solid fa-rotate-left"></i> 초기화</button>
+      </div>
+    </header>
+    ${present.length === 0 ? `<div class="card">${emptyBox('fa-clipboard-check','출근한 선수가 없습니다.<br>출/퇴근 관리에서 참여 선수를 출근 처리하세요.')}</div>` : `
+    <div class="draft-layout">
+      <div class="card pool dropzone" data-drop="">
+        <h3 class="section"><i class="fa-solid fa-users"></i> 대기 선수 (${pool.length}명)</h3>
+        ${groups.map(g => `<div class="tier-group-label">${tierBadge(g.k)} ${esc(g.label)}</div><div class="chips">${g.list.map(p => chip(p,{draggable:true})).join('')}</div>`).join('') || '<p class="muted small">모든 선수가 배정되었습니다</p>'}
+      </div>
+      <div class="teams-grid">${teamsHtml}</div>
+    </div>`}`;
+
+  const move = (pid, zone) => { const p = findPlayer(pid); if(!p) return; p.team = zone === '' ? null : Number(zone); draftSel = null; save(); rerender(); };
+  bindDnD(el, move);
+  // 클릭으로 배치 (터치 화면용)
+  $$('.chip', el).forEach(c => {
+    if(c.dataset.pid === draftSel) c.classList.add('selected');
+    c.addEventListener('click', e => { e.stopPropagation(); draftSel = draftSel === c.dataset.pid ? null : c.dataset.pid; rerender(); });
+  });
+  $$('[data-drop]', el).forEach(z => z.addEventListener('click', () => { if(draftSel) move(draftSel, z.dataset.drop); }));
+
+  $('#drAdd').onclick = () => { if(db.draft.teamCount >= 16) return toast('팀은 최대 16개입니다','error'); db.draft.teamCount++; save(); rerender(); };
+  $('#drDel').onclick = () => {
+    if(db.draft.teamCount <= 1) return;
+    const n = db.draft.teamCount;
+    db.players.forEach(p => { if(p.team === n) p.team = null; });
+    db.draft.teamCount--; save(); rerender();
+  };
+  $('#drAuto').onclick = () => {
+    const teams = Array.from({ length:tc }, (_,i) => ({ id:i+1, n:0, cost:0 }));
+    shuffle([...present]).sort((a,b) => costOf(b) - costOf(a)).forEach(p => {
+      const minN = Math.min(...teams.map(t => t.n));
+      const c1 = teams.filter(t => t.n === minN);
+      const minC = Math.min(...c1.map(t => t.cost));
+      const c2 = c1.filter(t => t.cost === minC);
+      const t = c2[Math.floor(Math.random() * c2.length)];
+      p.team = t.id; t.n++; t.cost += costOf(p);
+    });
+    save(); rerender(); toast('코스트 균형에 맞춰 자동 배정했습니다');
+  };
+  $('#drReset').onclick = () => confirmDialog('모든 팀 배정을 해제할까요?', () => { db.players.forEach(p => p.team = null); save(); rerender(); }, { okLabel:'초기화', danger:true });
+  $('#drCopy').onclick = () => {
+    const lines = [];
+    for(let i=1; i<=tc; i++){
+      const ms = present.filter(p => p.team === i);
+      if(ms.length) lines.push(`${i}팀 (코스트 ${ms.reduce((s,p)=>s+costOf(p),0)}): ${ms.map(p => p.name).join(', ')}`);
+    }
+    if(!lines.length) return toast('배정된 팀이 없습니다','error');
+    copyText(lines.join('\n'));
+  };
+  $('#drConfirm').onclick = () => {
+    const teams = [];
+    for(let i=1; i<=tc; i++){
+      const ms = present.filter(p => p.team === i);
+      if(ms.length) teams.push({ id:i, name:`${i}팀`, members: ms.map(p => ({ pid:p.id, name:p.name })) });
+    }
+    if(!teams.length) return toast('배정된 팀이 없습니다','error');
+    confirmDialog(`${teams.length}개 팀으로 경기 점수판을 준비합니다. 점수판의 기존 점수는 초기화됩니다.`, () => {
+      Object.assign(db.score, { teams, scores:{}, startedAt:null });
+      save(); location.hash = '#score'; toast('팀을 확정했습니다');
+    });
+  };
+}
+function copyText(text){
+  const done = () => toast('클립보드에 복사했습니다');
+  if(navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
+  function fallback(){
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); done(); }catch{ toast('복사에 실패했습니다','error'); }
+    ta.remove();
+  }
+}
+
+/* =====================================================================
+   [페이지 4] 경기 점수판 (관리자)
+   - 라운드별 점수 입력 → 합계·순위 자동 계산
+   - 체크포인트 룰: 목표 점수 달성 팀에 🔥 표시
+   - 대회 종료 & 저장: 최종 순위를 우승 기록에 저장
+   ===================================================================== */
+function renderScore(el){
+  const S = db.score;
+  if(!S.teams.length){
+    el.innerHTML = `<header class="page-header"><div><h2 class="page-title">경기 점수 & 순위</h2></div></header>
+      <div class="card">${emptyBox('fa-people-group','아직 확정된 팀이 없습니다.<br>팀 드래프트에서 팀을 확정하거나, 빈 팀으로 바로 시작할 수 있습니다.')}
+      <div class="toolbar" style="justify-content:center"><a class="btn" href="#draft"><i class="fa-solid fa-people-group"></i> 팀 드래프트로 이동</a>
+      <button class="btn btn-primary" id="scBlank"><i class="fa-solid fa-plus"></i> 빈 팀 8개로 시작</button></div></div>`;
+    $('#scBlank').onclick = () => { S.teams = Array.from({ length:8 }, (_,i) => ({ id:i+1, name:`${i+1}팀`, members:[] })); S.scores = {}; save(); rerender(); };
+    return;
+  }
+  let head = '<th>팀명</th>';
+  for(let r=1; r<=S.rounds; r++) head += `<th style="text-align:center">R${r}</th>`;
+  head += '<th style="text-align:center">합계</th>';
+  const rows = S.teams.map(t => {
+    let cells = '';
+    for(let r=1; r<=S.rounds; r++){
+      const v = S.scores[t.id + '-' + r];
+      cells += `<td style="text-align:center"><input class="input score-input num" type="number" step="any" data-team="${t.id}" data-round="${r}" value="${v ?? ''}" placeholder="0"></td>`;
+    }
+    return `<tr><td><input class="input team-name-input" data-team-name="${t.id}" value="${esc(t.name)}">
+        <div class="small muted" style="margin-top:4px">${t.members.map(m => esc(memberName(m))).join(', ') || '멤버 없음'}</div></td>
+      ${cells}<td style="text-align:center;font-weight:800;color:var(--accent)" class="num" id="tot-${t.id}">${teamTotal(t)}</td></tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <header class="page-header">
+      <div><h2 class="page-title">경기 점수 & 순위</h2><p class="page-sub">점수를 입력하면 자동 저장되고 순위가 바로 바뀝니다</p></div>
+      <div class="toolbar">
+        <label class="cp-toggle"><input type="checkbox" id="cpOn" ${S.cpOn?'checked':''}> 체크포인트 룰
+          <input class="input num" type="number" id="cpTarget" value="${S.cpTarget}" title="목표 점수"> 점</label>
+        <button class="btn" id="scAddR"><i class="fa-solid fa-plus"></i> 라운드 추가</button>
+        <button class="btn" id="scDelR"><i class="fa-solid fa-minus"></i> 라운드 삭제</button>
+        <button class="btn btn-danger" id="scReset"><i class="fa-solid fa-eraser"></i> 점수 초기화</button>
+        <button class="btn btn-danger" id="scDelete"><i class="fa-solid fa-ban"></i> 경기 삭제</button>
+        <button class="btn btn-primary" id="scEnd"><i class="fa-solid fa-flag-checkered"></i> 대회 종료 & 저장</button>
+      </div>
+    </header>
+    <div class="score-layout">
+      <div class="card"><h3 class="section"><i class="fa-solid fa-ranking-star"></i> 실시간 순위</h3><div class="tbl-wrap" id="liveRank"></div></div>
+      <div class="card"><h3 class="section"><i class="fa-solid fa-pen"></i> 점수 입력 <span class="small muted">(팀 순 고정)</span></h3>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div></div>
+    </div>`;
+  drawLiveRank();
+
+  $$('[data-round]', el).forEach(inp => inp.addEventListener('input', () => {
+    const key = inp.dataset.team + '-' + inp.dataset.round;
+    if(inp.value === '') delete S.scores[key]; else S.scores[key] = Number(inp.value);
+    if(!S.startedAt && inp.value !== '') S.startedAt = Date.now();
+    save();
+    const t = S.teams.find(t => String(t.id) === inp.dataset.team);
+    $('#tot-' + t.id).textContent = teamTotal(t);
+    drawLiveRank();
+  }));
+  $$('[data-team-name]', el).forEach(inp => inp.addEventListener('change', () => {
+    const t = S.teams.find(t => String(t.id) === inp.dataset.teamName);
+    t.name = inp.value.trim() || `${t.id}팀`; save(); drawLiveRank();
+  }));
+  $('#cpOn').onchange = e => { S.cpOn = e.target.checked; save(); drawLiveRank(); };
+  $('#cpTarget').onchange = e => { S.cpTarget = Number(e.target.value) || 0; save(); drawLiveRank(); };
+  $('#scAddR').onclick = () => { if(S.rounds >= 20) return; S.rounds++; save(); rerender(); };
+  $('#scDelR').onclick = () => {
+    if(S.rounds <= 1) return;
+    const r = S.rounds, has = S.teams.some(t => S.scores[t.id + '-' + r] != null);
+    const doIt = () => { S.teams.forEach(t => delete S.scores[t.id + '-' + r]); S.rounds--; save(); rerender(); };
+    has ? confirmDialog(`R${r}에 입력된 점수가 함께 삭제됩니다.`, doIt, { okLabel:'삭제', danger:true }) : doIt();
+  };
+  $('#scReset').onclick = () => confirmDialog('모든 라운드 점수를 지울까요?', () => { S.scores = {}; S.startedAt = null; save(); rerender(); }, { okLabel:'초기화', danger:true });
+  $('#scEnd').onclick = openEndMatch;
+  // 경기 삭제: 우승 기록에 남기지 않고 진행 중인 경기(팀 구성 + 점수)를 통째로 버립니다.
+  $('#scDelete').onclick = () => confirmDialog(
+    '진행 중인 경기를 삭제할까요? 점수와 점수판 팀 구성이 모두 지워지고, 우승 기록에는 아무것도 남지 않습니다. (드래프트 배정은 그대로 남습니다)',
+    () => { Object.assign(S, { teams:[], scores:{}, startedAt:null }); save(); rerender(); toast('경기를 삭제했습니다'); },
+    { okLabel:'경기 삭제', danger:true });
+}
+function drawLiveRank(){
+  const S = db.score, box = $('#liveRank'); if(!box) return;
+  const ranking = scoreRanking();
+  box.innerHTML = `<table class="tbl"><thead><tr><th>#</th><th>팀명</th>${S.cpOn?'<th>CP</th>':''}<th>Total</th></tr></thead><tbody>
+    ${ranking.map((t,i) => { const hit = S.cpOn && t.total >= S.cpTarget;
+      return `<tr class="${hit?'cp-reached':''}"><td class="rank-${i+1}">${i+1}</td><td><b>${esc(t.name)}</b></td>${S.cpOn?`<td>${hit?'🔥':''}</td>`:''}<td class="num" style="font-weight:800;font-size:1.1rem">${t.total}</td></tr>`; }).join('')}
+  </tbody></table>`;
+}
+function openEndMatch(){
+  const ranking = scoreRanking();
+  if(!ranking.some(t => t.total !== 0)) return toast('입력된 점수가 없습니다','error');
+  const m = openModal({
+    title:'<i class="fa-solid fa-flag-checkered"></i> 대회 종료 & 저장',
+    body:`<label class="field">대회 이름<input class="input" id="emTitle" value="${esc((db.records.length+1)+'회차 내전')}"></label>
+      <label class="field">날짜<input class="input" type="date" id="emDate" value="${todayStr()}"></label>
+      <div class="notice">최종 순위: ${ranking.slice(0,8).map((t,i) => `${i+1}등 ${esc(t.name)} (${t.total})`).join(' · ')}${ranking.length>8?` 외 ${ranking.length-8}팀`:''}</div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:14px"><input type="checkbox" id="emClear" checked> 저장 후 점수판 비우기</label>`,
+    footer:`<button class="btn" data-x>취소</button><button class="btn btn-primary" id="emSave"><i class="fa-solid fa-floppy-disk"></i> 우승 기록에 저장</button>`
+  });
+  $('[data-x]', m).onclick = closeModal;
+  $('#emSave', m).onclick = () => {
+    db.records.push({
+      id:uid(), createdAt:Date.now(),
+      title: $('#emTitle', m).value.trim() || '내전', date: $('#emDate', m).value || todayStr(),
+      ranks: ranking.map((t,i) => ({ rank:i+1, team:t.name, members:t.members.map(x => ({...x})), score:t.total })),
+    });
+    if($('#emClear', m).checked){ db.score.scores = {}; db.score.startedAt = null; }
+    save(); closeModal(); toast('우승 기록에 저장했습니다'); location.hash = '#fame';
+  };
+}
+
+/* =====================================================================
+   [페이지 5] 우승 기록 (공개 / 관리자는 1~8등 결과 작성·수정·삭제)
+   ===================================================================== */
+let famePage = 1; const fameOpen = new Set();
+function renderFame(el){
+  const admin = isAdmin(), recs = sortedRecords(), per = 6;
+  const pages = Math.max(1, Math.ceil(recs.length / per));
+  famePage = Math.min(Math.max(1, famePage), pages);
+  const list = recs.slice((famePage-1)*per, famePage*per);
+
+  // 최다 우승자: 등록 선수(수동 승수 포함) + 등록되지 않은 이름
+  const top = db.players.map(p => ({ name:p.name, p, wins:playerStats(p).wins })).filter(x => x.wins > 0);
+  const extra = {};
+  db.records.forEach(r => r.ranks.filter(e => e.rank === 1).forEach(e => (e.members||[]).forEach(m => {
+    if(!db.players.some(p => memberMatches(m, p))) extra[m.name] = (extra[m.name]||0) + 1;
+  })));
+  Object.entries(extra).forEach(([name, wins]) => top.push({ name, p:null, wins }));
+  top.sort((a,b) => b.wins - a.wins || a.name.localeCompare(b.name,'ko'));
+
+  const medal = r => r===1?'🥇':r===2?'🥈':r===3?'🥉':`${r}등`;
+  const recHtml = r => {
+    const w = r.ranks.find(e => e.rank === 1), open = fameOpen.has(r.id);
+    return `<div class="record">
+      <div class="record-head" data-toggle="${esc(r.id)}">
+        <span class="crown"><i class="fa-solid fa-crown"></i></span>
+        <div class="grow"><div class="record-title">${esc(r.title)} · ${esc(w?.team || '-')}</div>
+          <div class="record-meta">${esc(r.date)} · ${(w?.members||[]).map(m => esc(memberName(m))).join(', ') || '멤버 정보 없음'}</div></div>
+        ${w && w.score !== '' && w.score != null ? `<span class="record-score">${esc(w.score)}</span>` : ''}
+        ${admin ? `<button class="icon-btn" data-edit="${esc(r.id)}" title="수정"><i class="fa-solid fa-pen"></i></button>
+                   <button class="icon-btn" data-del="${esc(r.id)}" title="삭제"><i class="fa-solid fa-trash"></i></button>` : ''}
+        <i class="fa-solid fa-chevron-${open?'up':'down'} muted"></i>
+      </div>
+      ${open ? `<div class="record-detail"><table class="tbl"><thead><tr><th>순위</th><th>팀</th><th>멤버</th><th>점수</th></tr></thead><tbody>
+        ${[...r.ranks].sort((a,b) => a.rank - b.rank).map(e => `<tr><td class="rank-${e.rank}">${medal(e.rank)}</td><td><b>${esc(e.team)}</b></td>
+          <td>${(e.members||[]).map(m => `<span class="name-chip">${esc(memberName(m))}</span>`).join('')}</td><td class="num">${esc(e.score ?? '')}</td></tr>`).join('')}
+      </tbody></table></div>` : ''}
+    </div>`;
+  };
+
+  el.innerHTML = `
+    <header class="page-header">
+      <div><h2 class="page-title">우승 기록</h2><p class="page-sub">역대 내전 결과 · 기록을 누르면 전체 순위가 펼쳐집니다</p></div>
+      ${admin ? `<div class="toolbar"><button class="btn btn-primary" id="fmNew"><i class="fa-solid fa-plus"></i> 결과 작성</button></div>` : ''}
+    </header>
+    <div class="fame-layout">
+      <div class="card"><h3 class="section"><i class="fa-solid fa-scroll"></i> 역대 우승 기록</h3>
+        ${list.length ? list.map(recHtml).join('') : emptyBox('fa-trophy', admin ? '아직 기록이 없습니다.<br>오른쪽 위 "결과 작성"으로 1~8등 결과를 입력하세요.' : '아직 기록이 없습니다')}
+        <div class="pager"><button class="btn btn-sm" id="fmPrev" ${famePage<=1?'disabled':''}>이전</button><span class="muted">${famePage} / ${pages}</span><button class="btn btn-sm" id="fmNext" ${famePage>=pages?'disabled':''}>다음</button></div>
+      </div>
+      <div class="card"><h3 class="section"><i class="fa-solid fa-medal"></i> 최다 우승자 랭킹 TOP 10</h3>
+        <table class="tbl"><thead><tr><th>순위</th><th>선수 이름</th><th>우승 횟수</th></tr></thead><tbody>
+        ${top.length ? top.slice(0,10).map((x,i) => `<tr><td class="rank-${i+1}">${i+1}</td><td><div style="display:flex;gap:10px;align-items:center">${x.p?avatar(x.p,28):''}<b>${esc(x.name)}</b></div></td><td class="num"><b>${x.wins}</b>회</td></tr>`).join('')
+          : `<tr><td colspan="3">${emptyBox('fa-crown','기록 없음')}</td></tr>`}
+        </tbody></table></div>
+    </div>`;
+
+  $$('[data-toggle]', el).forEach(h => h.onclick = e => {
+    if(e.target.closest('[data-edit],[data-del]')) return;
+    const id = h.dataset.toggle; fameOpen.has(id) ? fameOpen.delete(id) : fameOpen.add(id); rerender();
+  });
+  $('#fmPrev').onclick = () => { famePage--; rerender(); };
+  $('#fmNext').onclick = () => { famePage++; rerender(); };
+  if(admin){
+    $('#fmNew').onclick = () => openRecordEditor(null);
+    $$('[data-edit]', el).forEach(b => b.onclick = () => openRecordEditor(db.records.find(r => r.id === b.dataset.edit)));
+    $$('[data-del]', el).forEach(b => b.onclick = () => {
+      const r = db.records.find(r => r.id === b.dataset.del);
+      confirmDialog(`"${r.title}" 기록을 삭제할까요? 선수 전적에서도 빠집니다.`, () => { db.records = db.records.filter(x => x !== r); save(); rerender(); }, { okLabel:'삭제', danger:true });
+    });
+  }
+}
+function openRecordEditor(rec){
+  const r = rec || { date:todayStr(), title:`${db.records.length+1}회차 내전`, ranks:[] };
+  let rows = '';
+  for(let i=1; i<=8; i++){
+    const e = r.ranks.find(e => e.rank === i) || {};
+    rows += `<tr><td class="rank-label rank-${i}">${i}등</td>
+      <td><input class="input" data-f="team" data-r="${i}" placeholder="${i}팀" value="${esc(e.team||'')}"></td>
+      <td><input class="input" data-f="members" data-r="${i}" placeholder="멤버1, 멤버2, 멤버3" value="${esc((e.members||[]).map(memberName).join(', '))}"></td>
+      <td style="width:90px"><input class="input num" type="number" step="any" data-f="score" data-r="${i}" placeholder="점수" value="${esc(e.score ?? '')}"></td></tr>`;
+  }
+  const m = openModal({
+    wide:true, title:`<i class="fa-solid fa-crown"></i> ${rec ? '결과 수정' : '결과 작성'}`,
+    body:`<div class="form-grid" style="grid-template-columns:2fr 1fr"><label class="field">대회 이름<input class="input" id="reTitle" value="${esc(r.title)}"></label>
+        <label class="field">날짜<input class="input" type="date" id="reDate" value="${esc(r.date)}"></label></div>
+      <div class="tbl-wrap"><table class="editor-table" style="width:100%"><thead><tr><th class="small muted">순위</th><th class="small muted" style="text-align:left">팀 이름</th><th class="small muted" style="text-align:left">멤버 (쉼표로 구분)</th><th class="small muted">점수</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div><p class="small muted">빠른 입력: 멤버 칸을 누른 뒤 아래 이름을 클릭하면 추가됩니다. 등록된 선수 이름과 같으면 개인 기록에 자동으로 반영됩니다.</p>
+        <div class="helper-chips">${db.players.length ? [...db.players].sort((a,b)=>a.name.localeCompare(b.name,'ko')).map(p => `<button type="button" data-name="${esc(p.name)}">${esc(p.name)}</button>`).join('') : '<span class="small muted">등록된 선수가 없습니다</span>'}</div></div>`,
+    footer:`<button class="btn" data-x>취소</button><button class="btn btn-primary" id="reSave"><i class="fa-solid fa-floppy-disk"></i> 저장</button>`
+  });
+  let focusMembers = $('[data-f="members"][data-r="1"]', m);
+  $$('[data-f="members"]', m).forEach(i => i.addEventListener('focus', () => focusMembers = i));
+  $$('[data-name]', m).forEach(b => b.onmousedown = e => {
+    e.preventDefault();
+    const names = focusMembers.value.split(',').map(s => s.trim()).filter(Boolean);
+    if(!names.includes(b.dataset.name)) names.push(b.dataset.name);
+    focusMembers.value = names.join(', '); focusMembers.focus();
+  });
+  $('[data-x]', m).onclick = closeModal;
+  $('#reSave', m).onclick = () => {
+    const ranks = [];
+    for(let i=1; i<=8; i++){
+      const get = f => $(`[data-f="${f}"][data-r="${i}"]`, m).value.trim();
+      const team = get('team'), members = resolveMembers(get('members')), sc = get('score');
+      if(!team && !members.length && sc === '') continue;
+      ranks.push({ rank:i, team: team || `${i}등 팀`, members, score: sc === '' ? '' : Number(sc) });
+    }
+    if(!ranks.some(e => e.rank === 1)) return toast('1등 팀은 꼭 입력해야 합니다','error');
+    const data = { title: $('#reTitle', m).value.trim() || '내전', date: $('#reDate', m).value || todayStr(), ranks };
+    if(rec) Object.assign(rec, data); else db.records.push({ id:uid(), createdAt:Date.now(), ...data });
+    const unknown = ranks.flatMap(e => e.members).filter(x => !x.pid).map(x => x.name);
+    save(); closeModal(); rerender();
+    toast(unknown.length ? `저장 완료 · 미등록 이름: ${[...new Set(unknown)].join(', ')}` : '저장했습니다');
+  };
+}
+
+/* =====================================================================
+   [페이지 6] 개인 기록 (공개 / 관리자는 승수·게임 수 추가)
+   ===================================================================== */
+let profileSel = null, profileQuery = '';
+function renderProfile(el){
+  if(profileSel && !findPlayer(profileSel)) profileSel = null;
+  el.innerHTML = `
+    <header class="page-header">
+      <div><h2 class="page-title">개인 기록</h2><p class="page-sub">선수를 누르면 상세 전적이 보입니다</p></div>
+      <div class="search-box"><i class="fa-solid fa-magnifying-glass"></i><input class="input" id="pfSearch" placeholder="선수 검색..." value="${esc(profileQuery)}"></div>
+    </header>
+    <div class="profile-layout">
+      <div class="card"><div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>#</th><th>선수</th><th>티어</th><th>총 게임</th><th>우승</th><th>승률</th><th>평균 순위</th></tr></thead>
+        <tbody id="pfBody"></tbody></table></div></div>
+      <div class="card profile-detail" id="pfDetail"></div>
+    </div>`;
+  drawProfileTable(); drawProfileDetail();
+  $('#pfSearch').addEventListener('input', e => { profileQuery = e.target.value; drawProfileTable(); });
+}
+function drawProfileTable(){
+  const q = norm(profileQuery);
+  const rows = db.players.map(p => ({ p, s:playerStats(p) }))
+    .filter(x => !q || norm(x.p.name).includes(q) || norm(x.p.ingame).includes(q))
+    .sort((a,b) => b.s.wins - a.s.wins || b.s.rate - a.s.rate || b.s.games - a.s.games || a.p.name.localeCompare(b.p.name,'ko'));
+  const body = $('#pfBody');
+  body.innerHTML = rows.length ? rows.map((x,i) => `<tr class="clickable ${x.p.id===profileSel?'selected':''}" data-pid="${esc(x.p.id)}">
+      <td class="muted">${i+1}</td><td><div style="display:flex;gap:10px;align-items:center">${avatar(x.p,30)}<b>${esc(x.p.name)}</b></div></td>
+      <td>${tierBadge(x.p.tier)}</td><td class="num">${x.s.games}</td><td class="num"><b>${x.s.wins}</b></td>
+      <td class="num">${x.s.rate.toFixed(1)}%</td><td class="num">${x.s.avg!=null?x.s.avg.toFixed(2)+'위':'-'}</td></tr>`).join('')
+    : `<tr><td colspan="7">${emptyBox('fa-user', db.players.length ? '검색 결과가 없습니다' : '등록된 선수가 없습니다')}</td></tr>`;
+  $$('tr[data-pid]', body).forEach(tr => tr.onclick = () => { profileSel = tr.dataset.pid; drawProfileTable(); drawProfileDetail(); });
+}
+function drawProfileDetail(){
+  const box = $('#pfDetail'), p = profileSel && findPlayer(profileSel);
+  if(!p){ box.innerHTML = emptyBox('fa-hand-pointer','왼쪽 목록에서 선수를 선택하세요'); return; }
+  const s = playerStats(p), t = tierInfo(p.tier), admin = isAdmin();
+  const medal = r => r===1?'🥇':r===2?'🥈':r===3?'🥉':`${r}위`;
+  box.innerHTML = `
+    <div class="profile-top">${avatar(p,72)}<div style="flex:1;min-width:0">
+      <div class="profile-name">${esc(p.name)}</div>
+      <div class="muted small" style="margin:4px 0 8px"><i class="fa-solid fa-gamepad"></i> ${esc(p.ingame || '-')}</div>
+      <a class="btn btn-sm" href="${esc(recordUrl(p))}" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square"></i> 전적 보기</a>
+      ${admin ? `<button class="btn btn-sm" id="pfEdit"><i class="fa-solid fa-pen"></i> 정보 수정</button>` : ''}
+    </div></div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="label">티어</div><div class="value">${tierBadge(p.tier)}</div><div class="small muted" style="margin-top:4px">${t?t.cost:0}코스트</div></div>
+      <div class="stat-box"><div class="label">총 게임</div><div class="value num">${s.games}</div></div>
+      <div class="stat-box"><div class="label">우승</div><div class="value num" style="color:var(--accent)">${s.wins}</div></div>
+      <div class="stat-box"><div class="label">승률</div><div class="value num">${s.rate.toFixed(1)}%</div></div>
+      <div class="stat-box"><div class="label">평균 순위</div><div class="value num">${s.avg!=null?s.avg.toFixed(2):'-'}</div></div>
+      <div class="stat-box"><div class="label">내전 기록</div><div class="value num" style="font-size:15px">${s.recordGames}게임 ${s.recordWins}승</div></div>
+    </div>
+    ${admin ? `<div class="admin-box"><div class="title"><i class="fa-solid fa-shield-halved"></i> 기록 수동 추가 (관리자)</div>
+      <p class="small muted" style="margin-bottom:10px">우승 기록에 없는 경기를 직접 더합니다. 현재 수동 추가: <b>${p.bonusGames||0}게임 ${p.bonusWins||0}승</b></p>
+      <div class="toolbar">
+        <button class="btn btn-sm btn-primary" data-adj="win+1"><i class="fa-solid fa-plus"></i> 1승 추가</button>
+        <button class="btn btn-sm" data-adj="win-1"><i class="fa-solid fa-minus"></i> 1승 빼기</button>
+        <button class="btn btn-sm" data-adj="game+1"><i class="fa-solid fa-plus"></i> 1게임(우승 외) 추가</button>
+        <button class="btn btn-sm" data-adj="game-1"><i class="fa-solid fa-minus"></i> 1게임 빼기</button>
+      </div></div>` : ''}
+    <h3 class="section"><i class="fa-solid fa-clock-rotate-left"></i> 최근 경기 기록</h3>
+    ${s.hist.length ? s.hist.slice(0,10).map(h => `<div class="match-row"><span class="match-rank rank-${h.rank}">${medal(h.rank)}</span>
+        <div style="flex:1;min-width:0"><b>${esc(h.title)}</b><div class="small muted">${esc(h.date)} · ${esc(h.team)}</div></div>
+        ${h.score!==''&&h.score!=null?`<span class="num muted">${esc(h.score)}점</span>`:''}</div>`).join('')
+      : `<p class="muted small">대회 기록이 없습니다</p>`}`;
+  if(admin){
+    $('#pfEdit').onclick = () => openPlayerEditor(p);
+    $$('[data-adj]', box).forEach(b => b.onclick = () => {
+      const w = p.bonusWins || 0, g = p.bonusGames || 0;
+      switch(b.dataset.adj){
+        case 'win+1':  p.bonusWins = w + 1; p.bonusGames = g + 1; break;   // 우승도 1게임이므로 게임 수도 +1
+        case 'win-1':  if(w <= 0) return toast('뺄 수동 승수가 없습니다','error'); p.bonusWins = w - 1; p.bonusGames = Math.max(0, g - 1); break;
+        case 'game+1': p.bonusGames = g + 1; break;
+        case 'game-1': if(g <= w) return toast('뺄 수 있는 (우승 외) 게임이 없습니다','error'); p.bonusGames = g - 1; break;
+      }
+      save(); drawProfileTable(); drawProfileDetail();
+    });
+  }
+}
+
+/* =====================================================================
+   [페이지 7] 리더보드 (공개) - 카드를 누르면 전적 링크로 이동
+   ===================================================================== */
+let lbSort = 'tier', lbQuery = '';
+function renderLeaderboard(el){
+  el.innerHTML = `
+    <header class="page-header">
+      <div><h2 class="page-title">리더보드</h2><p class="page-sub">등록된 멤버 목록 및 전적 검색</p></div>
+      <div class="header-right">
+        <div class="sort-group"><button class="sort-btn ${lbSort==='tier'?'active':''}" data-sort="tier">티어순</button><button class="sort-btn ${lbSort==='name'?'active':''}" data-sort="name">이름순</button></div>
+        <div class="search-box"><i class="fa-solid fa-magnifying-glass"></i><input class="input" id="lbSearch" placeholder="멤버 또는 닉네임 검색..." value="${esc(lbQuery)}"></div>
+      </div>
+    </header>
+    <div class="lb-grid" id="lbGrid"></div>`;
+  drawLbGrid();
+  $$('[data-sort]', el).forEach(b => b.onclick = () => { lbSort = b.dataset.sort; rerender(); });
+  $('#lbSearch').addEventListener('input', e => { lbQuery = e.target.value; drawLbGrid(); });
+}
+function drawLbGrid(){
+  const q = norm(lbQuery), admin = isAdmin();
+  const list = db.players.filter(p => !q || norm(p.name).includes(q) || norm(p.ingame).includes(q));
+  const card = p => `<div class="lb-card" data-pid="${esc(p.id)}">${tierBadge(p.tier)}
+      ${admin ? `<button class="icon-btn edit" data-edit="${esc(p.id)}" title="수정"><i class="fa-solid fa-pen"></i></button>` : ''}
+      ${avatar(p,78)}<div><div class="lb-name">${esc(p.name)}</div><div class="lb-ingame"><i class="fa-solid fa-gamepad"></i> ${esc(p.ingame || '-')}</div></div>
+      <div class="lb-action">전적 검색 <i class="fa-solid fa-arrow-up-right-from-square"></i></div></div>`;
+  let html = '';
+  if(!list.length) html = `<div style="grid-column:1/-1" class="card">${emptyBox('fa-users', db.players.length ? '검색 결과가 없습니다' : '등록된 멤버가 없습니다')}</div>`;
+  else if(lbSort === 'name') html = [...list].sort((a,b) => a.name.localeCompare(b.name,'ko')).map(card).join('');
+  else{
+    [...TIERS.map(t => t.k), null].forEach(k => {
+      const g = list.filter(p => (tierInfo(p.tier)?.k ?? null) === k).sort((a,b) => a.name.localeCompare(b.name,'ko'));
+      if(!g.length) return;
+      const t = tierInfo(k);
+      html += `<div class="tier-divider">${t?.icon?`<i class="fa-solid ${t.icon}"></i>`:''} ${k ? esc(k)+' Tier' : 'Unranked'}</div>` + g.map(card).join('');
+    });
+  }
+  const grid = $('#lbGrid'); grid.innerHTML = html;
+  $$('.lb-card', grid).forEach(c => c.onclick = e => {
+    if(e.target.closest('[data-edit]')) return;
+    window.open(recordUrl(findPlayer(c.dataset.pid)), '_blank', 'noopener,noreferrer');
+  });
+  $$('[data-edit]', grid).forEach(b => b.onclick = () => openPlayerEditor(findPlayer(b.dataset.edit)));
+}
+
+/* =====================================================================
+   [페이지 8] 선수 티어표 (공개 열람 / 관리자는 등록·드래그로 티어 변경·삭제)
+   ===================================================================== */
+function renderTiers(el){
+  const admin = isAdmin();
+  const row = (label, sub, style, k, list) => `<div class="tier-row">
+      <div class="tier-label" style="${style}">${label}${sub?`<small>${sub}</small>`:''}</div>
+      <div class="tier-drop dropzone" data-drop="${esc(k)}">${list.map(p => chip(p,{ draggable:admin, showCost:false })).join('') || '<span class="muted small">-</span>'}</div></div>`;
+  const tierOptions = sel => `<option value="">미배정</option>` + TIERS.map(t => `<option value="${esc(t.k)}" ${sel===t.k?'selected':''}>${esc(t.k)} (${t.cost}코)</option>`).join('');
+
+  el.innerHTML = `
+    <header class="page-header">
+      <div><h2 class="page-title">${admin ? '선수 티어 관리' : '선수 티어표'}</h2>
+        <p class="page-sub">${admin ? '선수를 드래그해 티어를 바꾸고, 클릭해 정보·전적 링크를 수정하세요. 변경 사항은 바로 저장됩니다.' : '현재 선수 티어와 코스트'}</p></div>
+    </header>
+    ${admin ? `<div class="card" style="margin-bottom:20px"><h3 class="section"><i class="fa-solid fa-user-plus"></i> 새 선수 등록</h3>
+      <div class="form-grid">
+        <label class="field">닉네임 *<input class="input" id="npName" placeholder="표시 이름"></label>
+        <label class="field">인게임 닉네임<input class="input" id="npIngame" placeholder="게임 내 닉네임"></label>
+        <label class="field">티어<select class="input" id="npTier">${tierOptions('')}</select></label>
+        <label class="field">전적 링크<input class="input" id="npLink" placeholder="https://dak.gg/er/players/..."></label>
+        <div class="field" style="grid-column:span 2">프로필 사진${photoPickerHtml('npPhoto','')}</div>
+        <button class="btn btn-primary" id="npAdd" style="justify-content:center"><i class="fa-solid fa-plus"></i> 추가</button>
+      </div>
+      <p class="small muted" style="margin-top:10px">전적 링크를 비워두면 인게임 닉네임으로 dak.gg 전적 검색 주소가 자동으로 연결됩니다.</p></div>` : ''}
+    <div class="tier-board">
+      ${TIERS.map(t => row(`${t.icon?`<i class="fa-solid ${t.icon}" style="font-size:14px"></i>`:''}${esc(t.k)}`, `${t.cost}코`, `background:${t.color};color:${t.fg}`, t.k,
+          db.players.filter(p => p.tier === t.k).sort((a,b) => a.name.localeCompare(b.name,'ko')))).join('')}
+      ${row('<span style="font-size:14px">미배정</span>', '대기 명단', 'background:var(--bg-hover);color:var(--text-muted)', '', db.players.filter(p => !tierInfo(p.tier)).sort((a,b) => a.name.localeCompare(b.name,'ko')))}
+      ${admin ? `<div class="delete-zone dropzone" data-drop="__delete"><i class="fa-solid fa-trash"></i> 선수 삭제 (여기로 드래그)</div>` : ''}
+    </div>
+    ${admin && !db.players.length ? `<div style="text-align:center;margin-top:20px"><button class="btn" id="npSample"><i class="fa-solid fa-wand-magic-sparkles"></i> 연습용 예시 선수 10명 넣기</button></div>` : ''}`;
+
+  $$('.chip', el).forEach(c => c.onclick = () => {
+    const p = findPlayer(c.dataset.pid);
+    if(admin) openPlayerEditor(p); else { profileSel = p.id; location.hash = '#profile'; }
+  });
+  if(!admin) return;
+  bindDnD(el, (pid, zone) => {
+    const p = findPlayer(pid); if(!p) return;
+    if(zone === '__delete') return confirmDialog(`"${p.name}" 선수를 삭제할까요? (우승 기록에 적힌 이름은 남습니다)`, () => deletePlayer(p), { okLabel:'삭제', danger:true });
+    p.tier = zone || null; save(); rerender(); toast(`${p.name} → ${zone || '미배정'}`);
+  });
+  const npPhoto = bindPhotoPicker(el, 'npPhoto', '', () => $('#npName').value.trim());
+  $('#npName').addEventListener('input', () => { if(!npPhoto.value) $('#npPhoto .pp-preview').innerHTML = avatar({ name:$('#npName').value.trim() || '?' }, 56); });
+  $('#npAdd').onclick = () => {
+    const name = $('#npName').value.trim(), link = $('#npLink').value.trim(), image = npPhoto.value;
+    if(npPhoto.busy) return toast('사진을 처리하는 중입니다. 잠시 후 다시 눌러주세요','error');
+    if(!name) return toast('닉네임을 입력하세요','error');
+    if(db.players.some(p => norm(p.name) === norm(name))) return toast('같은 닉네임이 이미 있습니다','error');
+    if(link && !safeUrl(link)) return toast('전적 링크는 http:// 또는 https:// 로 시작해야 합니다','error');
+    const id = uid();
+    db.players.push({ id, name, ingame:$('#npIngame').value.trim(), tier:$('#npTier').value || null, link,
+                      present:false, team:null, bonusWins:0, bonusGames:0, createdAt:Date.now() });
+    save(); rerender(); toast(`${name} 선수를 등록했습니다`);
+    if(image) savePhoto(id, image).then(() => { save(); rerender(); }).catch(handleErr);
+  };
+  $('#npName').addEventListener('keydown', e => { if(e.key === 'Enter') $('#npAdd').click(); });
+  const sample = $('#npSample');
+  if(sample) sample.onclick = () => {
+    ['가람','나래','다온','라온','마루','바다','새봄','아라','자몽','하늘'].forEach((n,i) =>
+      db.players.push({ id:uid(), name:n, ingame:'', tier:TIERS[i % TIERS.length].k, link:'', present:true, team:null, bonusWins:0, bonusGames:0, createdAt:Date.now() }));
+    save(); rerender(); toast('예시 선수를 넣었습니다. 연습 후 삭제하세요.');
+  };
+}
+function deletePlayer(p){
+  db.players = db.players.filter(x => x !== p);
+  db.score.teams.forEach(t => t.members = t.members.filter(m => m.pid !== p.id));
+  save(); closeModal(); rerender(); toast(`${p.name} 선수를 삭제했습니다`);
+  if(photos[p.id]) savePhoto(p.id, null).catch(() => {});
+}
+
+/* ---------- 선수 정보 수정 모달 (티어표 · 리더보드 · 개인 기록에서 공통 사용) ---------- */
+function openPlayerEditor(p){
+  const m = openModal({
+    title:`<i class="fa-solid fa-user-pen"></i> 선수 정보 수정`,
+    body:`<label class="field">닉네임<input class="input" id="peName" value="${esc(p.name)}"></label>
+      <label class="field">인게임 닉네임<input class="input" id="peIngame" value="${esc(p.ingame||'')}"></label>
+      <label class="field">티어<select class="input" id="peTier"><option value="">미배정</option>${TIERS.map(t => `<option value="${esc(t.k)}" ${p.tier===t.k?'selected':''}>${esc(t.k)} (${t.cost}코)</option>`).join('')}</select></label>
+      <label class="field">전적 링크<input class="input" id="peLink" value="${esc(p.link||'')}" placeholder="비우면 dak.gg 자동 검색"></label>
+      <div class="field">프로필 사진${photoPickerHtml('pePhoto', p.name)}</div>
+      <div class="form-grid" style="grid-template-columns:1fr 1fr">
+        <label class="field">수동 추가 승수<input class="input num" type="number" min="0" id="peBW" value="${p.bonusWins||0}"></label>
+        <label class="field">수동 추가 게임 수<input class="input num" type="number" min="0" id="peBG" value="${p.bonusGames||0}"></label></div>
+      <p class="small muted">수동 추가 값은 우승 기록과 별개로 개인 기록에 더해집니다. 게임 수는 승수보다 작을 수 없습니다.</p>`,
+    footer:`<button class="btn btn-danger" id="peDel"><i class="fa-solid fa-trash"></i> 삭제</button><span class="spacer"></span>
+      <button class="btn" data-x>취소</button><button class="btn btn-primary" id="peSave"><i class="fa-solid fa-floppy-disk"></i> 저장</button>`
+  });
+  $('[data-x]', m).onclick = closeModal;
+  $('#peDel', m).onclick = () => confirmDialog(`"${p.name}" 선수를 삭제할까요? (우승 기록에 적힌 이름은 남습니다)`, () => deletePlayer(p), { okLabel:'삭제', danger:true });
+  const oldPhoto = photos[p.id] || '';
+  const pePhoto = bindPhotoPicker(m, 'pePhoto', oldPhoto, () => $('#peName', m).value.trim());
+  $('#peSave', m).onclick = () => {
+    const name = $('#peName', m).value.trim(), link = $('#peLink', m).value.trim(), image = pePhoto.value;
+    if(pePhoto.busy) return toast('사진을 처리하는 중입니다. 잠시 후 다시 눌러주세요','error');
+    const bw = Math.max(0, Math.floor(Number($('#peBW', m).value) || 0)), bg = Math.max(0, Math.floor(Number($('#peBG', m).value) || 0));
+    if(!name) return toast('닉네임을 입력하세요','error');
+    if(db.players.some(x => x !== p && norm(x.name) === norm(name))) return toast('같은 닉네임이 이미 있습니다','error');
+    if(link && !safeUrl(link)) return toast('전적 링크는 http:// 또는 https:// 로 시작해야 합니다','error');
+    if(bg < bw) return toast('게임 수는 승수보다 크거나 같아야 합니다','error');
+    Object.assign(p, { name, ingame:$('#peIngame', m).value.trim(), tier:$('#peTier', m).value || null, link, bonusWins:bw, bonusGames:bg });
+    db.score.teams.forEach(t => t.members.forEach(x => { if(x.pid === p.id) x.name = name; }));
+    save(); closeModal(); rerender(); toast('저장했습니다');
+    if(image !== oldPhoto) savePhoto(p.id, image).then(() => { save(); rerender(); }).catch(handleErr);
+  };
+}
+
+/* =====================================================================
+   [페이지 9] 관리자 설정 (마스터 전용)
+   - 계정 추가(관리자/일반) · 권한 변경 · 일반 계정과 멤버 연결 · 비밀번호 초기화 · 삭제
+   - 관리자·일반 계정은 사이드바 [내 계정]에서 본인 아이디·비밀번호만 바꿉니다.
+   - 모든 계정 작업은 서버 함수가 마스터인지 확인한 뒤에만 처리합니다.
+   ===================================================================== */
+const MIN_PW = 8;
+const ID_HINT = '영문·숫자·_ 2~20자';
+const myAccountFields = acc => `
+  <label class="field">아이디 (${ID_HINT})<input class="input" id="maId" value="${esc(acc.login_id)}" autocomplete="username" autocapitalize="off" spellcheck="false"></label>
+  <label class="field">현재 비밀번호 <span class="small">(변경하려면 꼭 입력)</span><input class="input" type="password" id="maCur" autocomplete="current-password"></label>
+  <label class="field">새 비밀번호 (${MIN_PW}자 이상, 바꾸지 않으려면 비워두기)<input class="input" type="password" id="maNew" autocomplete="new-password"></label>
+  <label class="field">새 비밀번호 확인<input class="input" type="password" id="maNew2" autocomplete="new-password"></label>`;
+// 성공하면 true
+async function saveMyAccount(root){
+  const me = currentAccount();
+  const id = $('#maId', root).value.trim(), cur = $('#maCur', root).value;
+  const nw = $('#maNew', root).value, nw2 = $('#maNew2', root).value;
+  const idChanged = id !== me.login_id, pwChanged = nw !== '' || nw2 !== '';
+  if(!idChanged && !pwChanged){ toast('바뀐 내용이 없습니다','error'); return false; }
+  if(!cur){ toast('현재 비밀번호를 입력하세요','error'); return false; }
+  if(idChanged && !ID_RULE.test(id)){ toast(`아이디는 ${ID_HINT}여야 합니다`,'error'); return false; }
+  if(pwChanged){
+    if(nw.length < MIN_PW){ toast(`새 비밀번호는 ${MIN_PW}자 이상이어야 합니다`,'error'); return false; }
+    if(nw !== nw2){ toast('새 비밀번호 확인이 일치하지 않습니다','error'); return false; }
+    if(nw === cur){ toast('현재 비밀번호와 다른 비밀번호를 쓰세요','error'); return false; }
+  }
+  try{
+    const acc = await API.rpc('update_my_account', { p_token:session.token, p_current:cur,
+      p_new_login: idChanged ? id : null, p_new_password: pwChanged ? nw : null });
+    setSession({ ...session, account:acc });
+  }catch(e){ handleErr(e); return false; }
+  toast(idChanged && pwChanged ? '아이디와 비밀번호를 변경했습니다' : idChanged ? '아이디를 변경했습니다' : '비밀번호를 변경했습니다');
+  return true;
+}
+function openMyAccountModal(){
+  const me = currentAccount();
+  const m = openModal({ title:'<i class="fa-solid fa-id-card"></i> 내 계정',
+    body:`<div style="display:flex;gap:10px;align-items:center">${roleBadge(me.role)}${linkedPlayer(me) ? `<span class="small muted">연결 멤버: <b>${esc(linkedPlayer(me).name)}</b></span>` : ''}</div>${myAccountFields(me)}`,
+    footer:`<button class="btn" data-x>취소</button><button class="btn btn-primary" id="maSave"><i class="fa-solid fa-floppy-disk"></i> 저장</button>` });
+  $('[data-x]', m).onclick = closeModal;
+  $('#maSave', m).onclick = async () => { const b = $('#maSave', m); b.disabled = true; if(await saveMyAccount(m)){ closeModal(); renderSidebar(); } else b.disabled = false; };
+}
+let settingsAccounts = null;   // 마지막으로 불러온 계정 목록
+async function renderSettings(el){
+  const me = currentAccount();
+  const fmtDate = t => { if(!t) return '-'; const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+  const roleSelect = (attr, sel) => `<select class="input" ${attr} style="width:auto;padding:5px 8px">
+      <option value="admin" ${sel==='admin'?'selected':''}>관리자</option><option value="member" ${sel==='member'?'selected':''}>일반</option></select>`;
+  const draw = list => {
+    const taken = acc => new Set(list.filter(a => a !== acc && a.player_id).map(a => a.player_id));
+    const playerSelect = (attr, acc) => { const t = taken(acc);
+      return `<select class="input" ${attr} style="width:auto;min-width:120px;padding:5px 8px"><option value="">연결 안 함</option>
+        ${[...db.players].sort((a,b) => a.name.localeCompare(b.name,'ko')).map(p =>
+          `<option value="${esc(p.id)}" ${acc && acc.player_id===p.id?'selected':''} ${t.has(p.id)?'disabled':''}>${esc(p.name)}${t.has(p.id)?' (연결됨)':''}</option>`).join('')}</select>`; };
+    const legacy = (() => { try{ const d = JSON.parse(localStorage.getItem('irido_db_v1')); return d && Array.isArray(d.players) && d.players.length ? d : null; }catch{ return null; } })();
+    el.innerHTML = `
+    <header class="page-header"><div><h2 class="page-title">관리자 설정</h2><p class="page-sub">마스터 전용 · 계정과 멤버 연결을 관리합니다</p></div></header>
+    <div class="settings-layout">
+      <div class="card">
+        <h3 class="section"><i class="fa-solid fa-id-card"></i> 내 계정</h3>
+        <div style="display:flex;flex-direction:column;gap:12px" id="maBox">
+          <div>${roleBadge(me.role)}</div>${myAccountFields(me)}
+          <button class="btn btn-primary" id="maSave" style="align-self:flex-start"><i class="fa-solid fa-floppy-disk"></i> 저장</button>
+        </div>
+        <div class="notice" style="margin-top:18px;line-height:1.9">
+          <b>권한 안내</b><br>
+          ${roleBadge('master')} 모든 기능 + 계정 관리(이 화면)<br>
+          ${roleBadge('admin')} 출/퇴근 · 드래프트 · 점수판 · 선수/기록 편집 · 본인 계정 관리<br>
+          ${roleBadge('member')} 연결된 본인 멤버의 출/퇴근 · 본인 계정 관리
+        </div>
+        ${legacy ? `<div class="notice" style="margin-top:12px;line-height:1.7"><b>이 브라우저에 예전 데이터가 있습니다</b><br>
+          서버로 옮기기 전, 이 브라우저에만 저장되던 선수 ${legacy.players.length}명 · 기록 ${(legacy.records||[]).length}개입니다.<br>
+          <button class="btn btn-sm" id="legacyUp" style="margin-top:8px"><i class="fa-solid fa-cloud-arrow-up"></i> 서버로 올리기</button></div>` : ''}
+      </div>
+      <div class="card">
+        <h3 class="section"><i class="fa-solid fa-users-gear"></i> 계정 관리</h3>
+        <div class="tbl-wrap" style="margin-bottom:18px"><table class="tbl">
+          <thead><tr><th>아이디</th><th>권한</th><th>연결 멤버</th><th>등록일</th><th></th></tr></thead>
+          <tbody>${list.map(a => `<tr><td><b>${esc(a.login_id)}</b></td>
+            <td>${a.role === 'master' ? roleBadge('master') : roleSelect(`data-role="${esc(a.id)}"`, a.role)}</td>
+            <td>${a.role === 'member' ? playerSelect(`data-link="${esc(a.id)}"`, a) : '<span class="muted small">-</span>'}</td>
+            <td class="muted small" style="white-space:nowrap">${fmtDate(a.created_at)}</td>
+            <td style="text-align:right;white-space:nowrap">${a.role === 'master' ? '<span class="small muted">삭제 불가</span>' : `
+              <button class="btn btn-sm" data-reset="${esc(a.id)}"><i class="fa-solid fa-rotate"></i> 비밀번호 초기화</button>
+              <button class="btn btn-sm btn-danger" data-remove="${esc(a.id)}"><i class="fa-solid fa-trash"></i> 삭제</button>`}</td></tr>`).join('')}
+          </tbody></table></div>
+        <h3 class="section" style="font-size:15px"><i class="fa-solid fa-user-plus"></i> 계정 추가</h3>
+        <div class="form-grid">
+          <label class="field">아이디 (${ID_HINT})<input class="input" id="acId" autocapitalize="off" spellcheck="false"></label>
+          <label class="field">초기 비밀번호 (${MIN_PW}자 이상)<input class="input" type="password" id="acPw" autocomplete="new-password"></label>
+          <label class="field">권한${roleSelect('id="acRole"', 'member')}</label>
+          <label class="field" id="acLinkWrap">연결 멤버 (일반 계정)${playerSelect('id="acLink"', null)}</label>
+          <button class="btn btn-primary" id="acAdd" style="justify-content:center"><i class="fa-solid fa-plus"></i> 계정 추가</button>
+        </div>
+        <p class="small muted" style="margin-top:10px">일반 계정은 연결된 멤버의 출/퇴근만 바꿀 수 있습니다. 멤버는 나중에 표에서 연결해도 됩니다.</p>
+      </div>
+    </div>`;
+    bind(list, legacy);
+  };
+  const reload = async () => {
+    try{ settingsAccounts = await API.rpc('list_accounts', { p_token:session.token }); }
+    catch(e){ handleErr(e); return; }
+    if(current === 'settings') draw(settingsAccounts);
+  };
+  const act = async (fn, args, okMsg) => {
+    try{ await API.rpc(fn, { p_token:session.token, ...args }); if(okMsg) toast(okMsg); }
+    catch(e){ handleErr(e); }
+    await reload();
+  };
+  const bind = (list, legacy) => {
+    $('#maSave').onclick = async () => { const b = $('#maSave'); b.disabled = true; if(await saveMyAccount($('#maBox'))){ renderSidebar(); draw(list); } else b.disabled = false; };
+    const syncLinkField = () => { $('#acLinkWrap').style.display = $('#acRole').value === 'member' ? '' : 'none'; };
+    $('#acRole').onchange = syncLinkField; syncLinkField();
+    $('#acAdd').onclick = () => {
+      const id = $('#acId').value.trim(), pw = $('#acPw').value, role = $('#acRole').value === 'admin' ? 'admin' : 'member';
+      if(!ID_RULE.test(id)) return toast(`아이디는 ${ID_HINT}여야 합니다`,'error');
+      if(pw.length < MIN_PW) return toast(`초기 비밀번호는 ${MIN_PW}자 이상이어야 합니다`,'error');
+      act('add_account', { p_login:id, p_password:pw, p_role:role, p_player_id: role === 'member' ? ($('#acLink').value || null) : null },
+          `${id} ${ROLES[role].label} 계정을 추가했습니다`);
+    };
+    $$('[data-role]', el).forEach(sel => sel.onchange = () => {
+      const acc = list.find(a => a.id === sel.dataset.role); if(!acc) return;
+      act('update_account', { p_account_id:acc.id, p_role:sel.value, p_player_id: sel.value === 'member' ? acc.player_id : null },
+          `${acc.login_id} → ${ROLES[sel.value].label}`);
+    });
+    $$('[data-link]', el).forEach(sel => sel.onchange = () => {
+      const acc = list.find(a => a.id === sel.dataset.link); if(!acc) return;
+      const pid = sel.value || null;
+      act('update_account', { p_account_id:acc.id, p_role:acc.role, p_player_id:pid },
+          pid ? `${acc.login_id} ↔ ${findPlayer(pid)?.name || ''} 연결` : `${acc.login_id} 연결 해제`);
+    });
+    $$('[data-remove]', el).forEach(b => b.onclick = () => {
+      const acc = list.find(a => a.id === b.dataset.remove); if(!acc) return;
+      confirmDialog(`${acc.login_id} 계정을 삭제할까요?`, () => act('delete_account', { p_account_id:acc.id }, '계정을 삭제했습니다'), { okLabel:'삭제', danger:true });
+    });
+    $$('[data-reset]', el).forEach(b => b.onclick = () => {
+      const acc = list.find(a => a.id === b.dataset.reset); if(!acc) return;
+      const m = openModal({ title:'<i class="fa-solid fa-rotate"></i> 비밀번호 초기화',
+        body:`<p class="small muted">${esc(acc.login_id)} 계정의 새 비밀번호를 정합니다. 그 계정은 로그아웃됩니다.</p>
+          <label class="field">새 비밀번호 (${MIN_PW}자 이상)<input class="input" type="password" id="rsPw" autocomplete="new-password"></label>`,
+        footer:`<button class="btn" data-x>취소</button><button class="btn btn-primary" id="rsGo">변경</button>` });
+      $('[data-x]', m).onclick = closeModal;
+      $('#rsGo', m).onclick = () => {
+        const pw = $('#rsPw', m).value;
+        if(pw.length < MIN_PW) return toast(`비밀번호는 ${MIN_PW}자 이상이어야 합니다`,'error');
+        closeModal(); act('reset_password', { p_account_id:acc.id, p_password:pw }, '비밀번호를 초기화했습니다');
+      };
+      $('#rsPw', m).focus();
+    });
+    if(legacy) $('#legacyUp').onclick = () => confirmDialog(
+      `이 브라우저의 예전 데이터(선수 ${legacy.players.length}명)를 서버에 올립니다. 지금 서버에 있는 데이터는 덮어씌워집니다.`,
+      async () => { await uploadData(legacy); localStorage.removeItem('irido_db_v1'); }, { okLabel:'올리기', danger:true });
+  };
+  if(settingsAccounts) draw(settingsAccounts);
+  else el.innerHTML = `<div class="card">${emptyBox('fa-spinner fa-spin','계정 목록을 불러오는 중...')}</div>`;
+  reload();
+}
+
+/* =====================================================================
+   웹 앱 설치 (PWA)
+   - 안드로이드 크롬·삼성 인터넷·PC 크롬/엣지: 설치 창을 바로 띄웁니다.
+   - 아이폰·아이패드(사파리): 설치 창이 없어서 "공유 → 홈 화면에 추가" 방법을 안내합니다.
+   - 이미 앱으로 열려 있으면 버튼을 숨깁니다.
+   ===================================================================== */
+let installPrompt = null;
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isMobile = () => isIOS() || /android/i.test(navigator.userAgent);
+const installAvailable = () => !isStandalone() && (!!installPrompt || isMobile());
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; if(booted) renderSidebar(); });
+window.addEventListener('appinstalled', () => { installPrompt = null; toast('ETER:RE 앱을 설치했습니다'); if(booted) renderSidebar(); });
+async function installApp(){
+  if(installPrompt){
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    installPrompt = null; renderSidebar();
+    if(outcome !== 'accepted') toast('설치를 취소했습니다');
+    return;
+  }
+  const ios = isIOS();
+  openModal({ title:'<i class="fa-solid fa-mobile-screen-button"></i> 앱으로 설치하기',
+    body: ios ? `
+      <p style="line-height:1.7">아이폰·아이패드는 <b>사파리</b>에서 설치할 수 있습니다.</p>
+      <ol style="line-height:2;padding-left:20px">
+        <li>화면 아래(아이패드는 위)의 <b>공유 버튼</b> <i class="fa-solid fa-arrow-up-from-bracket"></i> 을 누릅니다.</li>
+        <li>목록을 내려 <b>홈 화면에 추가</b> <i class="fa-regular fa-square-plus"></i> 를 누릅니다.</li>
+        <li>오른쪽 위 <b>추가</b>를 누르면 홈 화면에 ETER:RE 아이콘이 생깁니다.</li>
+      </ol>
+      <p class="small muted">카카오톡 등 다른 앱 안에서 연 경우, 먼저 "사파리로 열기"를 눌러 주세요.</p>` : `
+      <p style="line-height:1.7">브라우저 메뉴에서 설치할 수 있습니다.</p>
+      <ol style="line-height:2;padding-left:20px">
+        <li>오른쪽 위(삼성 인터넷은 아래)의 <b>메뉴</b> <i class="fa-solid fa-ellipsis-vertical"></i> 를 누릅니다.</li>
+        <li><b>앱 설치</b> 또는 <b>홈 화면에 추가</b>를 누릅니다.</li>
+        <li><b>설치</b>를 누르면 홈 화면에 ETER:RE 아이콘이 생깁니다.</li>
+      </ol>
+      <p class="small muted">카카오톡 등 다른 앱 안에서 연 경우, 먼저 "다른 브라우저로 열기"를 눌러 주세요.</p>` });
+}
+if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')){
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW 등록 실패', e)));
+}
+
+/* ---------- 시작: 서버에서 데이터·로그인 상태를 불러온 뒤 화면 표시 ---------- */
+async function boot(){
+  document.title = `${CONFIG.SITE_NAME} - 내전 매니저`;
+  $('#brandName').textContent = CONFIG.SITE_NAME;
+  applyTheme(); renderSidebar();
+  $('#page').innerHTML = `<div class="card">${emptyBox('fa-spinner fa-spin','데이터를 불러오는 중...')}</div>`;
+  try{ await Promise.all([loadState(), loadPhotos()]); }
+  catch(e){
+    console.error(e); setSync('offline');
+    $('#page').innerHTML = `<div class="card">${emptyBox('fa-plug-circle-xmark','서버에 연결할 수 없습니다.<br>잠시 후 새로고침해 주세요.')}</div>`;
+    return;
+  }
+  if(session){   // 저장된 로그인이 아직 유효한지 서버에 확인
+    try{ setSession({ ...session, account: await API.rpc('me', { p_token:session.token }) }); }
+    catch(e){ if(e.code === 'AUTH_REQUIRED') setSession(null); }
+  }
+  booted = true; setSync('saved'); route();
+}
+boot();
+</script>
+</body>
+</html>
