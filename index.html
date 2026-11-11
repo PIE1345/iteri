@@ -1506,12 +1506,39 @@ async function saveMyAccount(root){
   return true;
 }
 function openMyAccountModal(){
-  const me = currentAccount();
+  const me = currentAccount(), mp = linkedPlayer(me);
   const m = openModal({ title:'<i class="fa-solid fa-id-card"></i> 내 계정',
-    body:`<div style="display:flex;gap:10px;align-items:center">${roleBadge(me.role)}${linkedPlayer(me) ? `<span class="small muted">연결 멤버: <b>${esc(linkedPlayer(me).name)}</b></span>` : ''}</div>${myAccountFields(me)}`,
-    footer:`<button class="btn" data-x>취소</button><button class="btn btn-primary" id="maSave"><i class="fa-solid fa-floppy-disk"></i> 저장</button>` });
+    body:`<div style="display:flex;gap:10px;align-items:center">${roleBadge(me.role)}${mp ? `<span class="small muted">연결 멤버: <b>${esc(mp.name)}</b></span>` : ''}</div>
+      ${mp ? `<h3 class="section" style="font-size:15px;margin:6px 0 0"><i class="fa-solid fa-user-pen"></i> 내 프로필 사진</h3>${myProfileFields(mp)}
+        <button class="btn btn-primary" id="mpSave" style="align-self:flex-start"><i class="fa-solid fa-floppy-disk"></i> 사진 저장</button>
+        <hr style="border:0;border-top:1px solid var(--border-color);margin:6px 0">` : ''}
+      <h3 class="section" style="font-size:15px;margin:6px 0 0"><i class="fa-solid fa-key"></i> 아이디 · 비밀번호</h3>${myAccountFields(me)}
+      <button class="btn btn-primary" id="maSave" style="align-self:flex-start"><i class="fa-solid fa-floppy-disk"></i> 계정 저장</button>`,
+    footer:`<button class="btn" data-x>닫기</button>` });
   $('[data-x]', m).onclick = closeModal;
+  if(mp) bindMyProfile(m, mp);
   $('#maSave', m).onclick = async () => { const b = $('#maSave', m); b.disabled = true; if(await saveMyAccount(m)){ closeModal(); renderSidebar(); } else b.disabled = false; };
+}
+/* ---------- 내 프로필 사진 (일반 계정: 연결된 본인 멤버의 사진만) ----------
+   서버 함수 save_my_photo 가 본인 멤버인지 확인한 뒤에만 바꿉니다.
+   닉네임·티어·전적 같은 다른 정보는 관리자만 바꿀 수 있습니다. */
+const myProfileFields = p => `
+  <div class="field">프로필 사진${photoPickerHtml('mpPhoto', p.name)}</div>
+  <p class="small muted">닉네임·티어·전적 등 다른 정보는 관리자에게 요청하세요.</p>`;
+function bindMyProfile(root, p){
+  const oldPhoto = photos[p.id] || '';
+  const pick = bindPhotoPicker(root, 'mpPhoto', oldPhoto, () => p.name);
+  $('#mpSave', root).onclick = async () => {
+    if(pick.busy) return toast('사진을 처리하는 중입니다. 잠시 후 다시 눌러주세요','error');
+    if(pick.value === oldPhoto) return toast('바뀐 사진이 없습니다','error');
+    const b = $('#mpSave', root); b.disabled = true; setSync('saving');
+    try{
+      await API.rpc('save_my_photo', { p_token:session.token, p_data:pick.value || null });
+      if(pick.value) photos[p.id] = pick.value; else delete photos[p.id];
+      setSync('saved'); renderSidebar(); rerender();
+      closeModal(); toast('프로필 사진을 저장했습니다');
+    }catch(e){ setSync('error'); handleErr(e); b.disabled = false; }
+  };
 }
 let settingsAccounts = null;   // 마지막으로 불러온 계정 목록
 async function renderSettings(el){
@@ -1639,7 +1666,7 @@ let installPrompt = null;
 const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isMobile = () => isIOS() || /android/i.test(navigator.userAgent);
-const installAvailable = () => !isStandalone() && (!!installPrompt || isMobile());
+const installAvailable = () => !isStandalone() && isMobile();   // 휴대폰·태블릿에서만 표시
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; if(booted) renderSidebar(); });
 window.addEventListener('appinstalled', () => { installPrompt = null; toast('ETER:RE 앱을 설치했습니다'); if(booted) renderSidebar(); });
 async function installApp(){
